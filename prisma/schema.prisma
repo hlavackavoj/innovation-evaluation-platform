@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  EVALUATOR
+  VIEWER
+}
+
+enum ProjectStage {
+  DISCOVERY
+  VALIDATION
+  MVP
+  SCALING
+  SPIN_OFF
+}
+
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ProjectPotentialLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ActivityType {
+  MEETING
+  CALL
+  EMAIL
+  NOTE
+  WORKSHOP
+  EVALUATION
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum OrganizationType {
+  UNIVERSITY
+  FACULTY
+  RESEARCH_CENTER
+  INNOVATION_CENTER
+  COMPANY
+  INVESTOR
+  PUBLIC_INSTITUTION
+}
+
+enum TeamStrength {
+  TECHNICAL_ONLY
+  BALANCED
+  STRONG
+}
+
+enum BusinessReadiness {
+  WEAK
+  EMERGING
+  STRONG
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  role          UserRole  @default(VIEWER)
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  ownedProjects Project[] @relation("ProjectOwner")
+  activities    Activity[]
+  assignedTasks Task[]
+}
+
+model Organization {
+  id        String           @id @default(cuid())
+  name      String
+  type      OrganizationType
+  website   String?
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  contacts  Contact[]
+  projects  Project[]
+}
+
+model Contact {
+  id             String           @id @default(cuid())
+  name           String
+  email          String?
+  phone          String?
+  role           String
+  notes          String?
+  organizationId String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  projectLinks   ProjectContact[]
+}
+
+model Project {
+  id                String                @id @default(cuid())
+  title             String
+  description       String
+  field             String?
+  stage             ProjectStage          @default(DISCOVERY)
+  priority          ProjectPriority       @default(MEDIUM)
+  potentialLevel    ProjectPotentialLevel @default(LOW) @map("potential_level")
+  ipStatus          String?
+  teamStrength      TeamStrength?
+  businessReadiness BusinessReadiness?
+  nextStep          String?
+  nextStepDueDate   DateTime?
+  lastContactAt     DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  organizationId    String?
+  ownerUserId       String?
+  organization      Organization?         @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  owner             User?                 @relation("ProjectOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  contacts          ProjectContact[]
+  activities        Activity[]
+  tasks             Task[]
+}
+
+model ProjectContact {
+  projectId String
+  contactId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, contactId])
+}
+
+model Activity {
+  id           String       @id @default(cuid())
+  projectId    String
+  userId       String?
+  type         ActivityType
+  note         String
+  activityDate DateTime
+  createdAt    DateTime     @default(now())
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Task {
+  id               String          @id @default(cuid())
+  projectId        String
+  assignedToUserId String?
+  title            String
+  description      String?
+  status           TaskStatus      @default(TODO)
+  priority         ProjectPriority @default(MEDIUM)
+  dueDate          DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedTo       User?           @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
+}
