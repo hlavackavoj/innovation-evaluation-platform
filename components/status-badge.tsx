@@ -2,22 +2,32 @@ import { Badge } from "@/components/ui/badge";
 import { formatEnumLabel } from "@/lib/format";
 
 const colorMap: Record<string, string> = {
-  HIGH: "bg-rose-100 text-rose-700",
-  URGENT: "bg-rose-200 text-rose-800",
-  MEDIUM: "bg-amber-100 text-amber-800",
-  LOW: "bg-emerald-100 text-emerald-700",
-  TODO: "bg-slate-100 text-slate-700",
-  IN_PROGRESS: "bg-sky-100 text-sky-700",
-  DONE: "bg-emerald-100 text-emerald-700",
-  CANCELLED: "bg-slate-200 text-slate-700",
-  DISCOVERY: "bg-slate-100 text-slate-700",
-  VALIDATION: "bg-amber-100 text-amber-800",
-  MVP: "bg-sky-100 text-sky-700",
-  SCALING: "bg-teal-100 text-teal-800",
-  SPIN_OFF: "bg-violet-100 text-violet-700"
+  HIGH: "bg-rose-50 text-rose-700 border-rose-200",
+  URGENT: "bg-rose-100 text-rose-800 border-rose-200",
+  MEDIUM: "bg-amber-50 text-amber-700 border-amber-200",
+  LOW: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  TODO: "bg-zinc-100 text-zinc-600 border-zinc-200",
+  IN_PROGRESS: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  DONE: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  CANCELLED: "bg-zinc-100 text-zinc-500 border-zinc-200",
+  PENDING: "bg-amber-50 text-amber-700 border-amber-200",
+  COMPLETED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  DISMISSED: "bg-zinc-100 text-zinc-500 border-zinc-200",
+  DISCOVERY: "bg-zinc-100 text-zinc-700 border-zinc-200",
+  VALIDATION: "bg-amber-50 text-amber-700 border-amber-200",
+  MVP: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  SCALING: "bg-violet-50 text-violet-700 border-violet-200",
+  SPIN_OFF: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  WEAK: "bg-rose-50 text-rose-700 border-rose-200",
+  EMERGING: "bg-amber-50 text-amber-700 border-amber-200",
+  STRONG: "bg-emerald-50 text-emerald-700 border-emerald-200"
 };
 
 export function StatusBadge({ value }: { value: string | null | undefined }) {
   const normalized = value ?? "UNKNOWN";
-  return <Badge className={colorMap[normalized] ?? "bg-slate-100 text-slate-700"}>{formatEnumLabel(normalized)}</Badge>;
+  return (
+    <Badge className={colorMap[normalized] ?? "bg-zinc-100 text-zinc-600 border-zinc-200"}>
+      {formatEnumLabel(normalized)}
+    </Badge>
+  );
 }

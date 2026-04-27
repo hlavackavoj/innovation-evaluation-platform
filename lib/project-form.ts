@@ -1,8 +1,8 @@
 import {
   BusinessReadiness,
+  PipelineStage,
   ProjectPotentialLevel,
   ProjectPriority,
-  ProjectStage,
   TeamStrength
 } from "@prisma/client";
 
@@ -10,7 +10,7 @@ type ProjectMutationInput = {
   title: string;
   description: string;
   field: string | null;
-  stage: ProjectStage;
+  stage: PipelineStage;
   priority: ProjectPriority;
   potentialLevel: ProjectPotentialLevel;
   ipStatus: string | null;
@@ -45,7 +45,7 @@ export function parseProjectFormData(formData: FormData): ProjectMutationInput {
     title,
     description,
     field: parseOptionalString(formData.get("field")),
-    stage: formData.get("stage") as ProjectStage,
+    stage: formData.get("stage") as PipelineStage,
     priority: formData.get("priority") as ProjectPriority,
     potentialLevel: formData.get("potentialLevel") as ProjectPotentialLevel,
     ipStatus: parseOptionalString(formData.get("ipStatus")),

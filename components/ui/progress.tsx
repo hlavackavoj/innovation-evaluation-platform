@@ -4,8 +4,11 @@ export function Progress({ value, className }: { value: number; className?: stri
   const safeValue = Math.max(0, Math.min(100, value));
 
   return (
-    <div className={cn("h-2.5 w-full overflow-hidden rounded-full bg-slate-200", className)}>
-      <div className="h-full rounded-full bg-tealCore transition-all" style={{ width: `${safeValue}%` }} />
+    <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-zinc-100", className)}>
+      <div
+        className="h-full rounded-full bg-indigo-600 transition-all duration-500"
+        style={{ width: `${safeValue}%` }}
+      />
     </div>
   );
 }

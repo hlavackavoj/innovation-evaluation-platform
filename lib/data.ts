@@ -1,19 +1,11 @@
-import { ProjectPotentialLevel, ProjectStage, TaskStatus } from "@prisma/client";
+import { RecommendationStatus, TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { pipelineStages } from "@/lib/constants";
+import { syncProjectRecommendations } from "@/lib/recommendations";
 
 export async function getDashboardData() {
-  const [totalProjects, activeValidations, highPotentialProjects, pendingTasks, recentProjects] = await Promise.all([
+  const [totalProjects, pendingTasks, projectsByStageRaw, recentActivities] = await Promise.all([
     prisma.project.count(),
-    prisma.project.count({
-      where: {
-        stage: ProjectStage.VALIDATION
-      }
-    }),
-    prisma.project.count({
-      where: {
-        potentialLevel: ProjectPotentialLevel.HIGH
-      }
-    }),
     prisma.task.count({
       where: {
         status: {
@@ -21,33 +13,44 @@ export async function getDashboardData() {
         }
       }
     }),
-    prisma.project.findMany({
-      orderBy: {
-        updatedAt: "desc"
+    prisma.project.groupBy({
+      by: ["stage"],
+      _count: {
+        stage: true
       },
-      take: 6,
+      orderBy: {
+        stage: "asc"
+      }
+    }),
+    prisma.activity.findMany({
+      orderBy: {
+        activityDate: "desc"
+      },
+      take: 5,
       include: {
-        contacts: {
-          include: {
-            contact: {
-              include: {
-                organization: true
-              }
-            }
-          }
-        }
+        project: true,
+        user: true
       }
     })
   ]);
 
+  const projectsByStage = pipelineStages.map((stage) => {
+    const match = projectsByStageRaw.find((item) => item.stage === stage);
+
+    return {
+      stage,
+      count: match?._count.stage ?? 0,
+      share: totalProjects > 0 ? Math.round(((match?._count.stage ?? 0) / totalProjects) * 100) : 0
+    };
+  });
+
   return {
     stats: [
       { label: "Total Projects", value: totalProjects, accent: "bg-teal-100 text-teal-800" },
-      { label: "Active Validations", value: activeValidations, accent: "bg-amber-100 text-amber-800" },
-      { label: "High Potential Projects", value: highPotentialProjects, accent: "bg-violet-100 text-violet-700" },
       { label: "Pending Tasks", value: pendingTasks, accent: "bg-rose-100 text-rose-700" }
     ],
-    recentProjects
+    projectsByStage,
+    recentActivities
   };
 }
 
@@ -63,6 +66,46 @@ export async function getProjects() {
 }
 
 export async function getProjectById(projectId: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      organization: true,
+      owner: true,
+      contacts: {
+        include: {
+          contact: {
+            include: {
+              organization: true
+            }
+          }
+        }
+      },
+      activities: {
+        orderBy: {
+          activityDate: "desc"
+        },
+        include: {
+          user: true
+        }
+      },
+      tasks: {
+        orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+        include: {
+          assignedTo: true
+        }
+      },
+      recommendations: {
+        orderBy: [{ createdAt: "asc" }]
+      }
+    }
+  });
+
+  if (!project) {
+    return null;
+  }
+
+  await syncProjectRecommendations(project);
+
   return prisma.project.findUnique({
     where: { id: projectId },
     include: {
@@ -90,6 +133,12 @@ export async function getProjectById(projectId: string) {
         include: {
           assignedTo: true
         }
+      },
+      recommendations: {
+        where: {
+          status: RecommendationStatus.PENDING
+        },
+        orderBy: [{ createdAt: "asc" }]
       }
     }
   });

@@ -6,19 +6,24 @@ export function Table({ className, ...props }: TableHTMLAttributes<HTMLTableElem
 }
 
 export function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("bg-slate-50 text-left text-slate-500", className)} {...props} />;
+  return <thead className={cn("border-b border-zinc-200 bg-zinc-50/60 text-left", className)} {...props} />;
 }
 
 export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody className={cn("divide-y divide-slate-100", className)} {...props} />;
+  return <tbody className={cn("divide-y divide-zinc-100", className)} {...props} />;
 }
 
 export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn("align-top", className)} {...props} />;
+  return <tr className={cn("align-top transition-colors hover:bg-zinc-50/80", className)} {...props} />;
 }
 
 export function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn("px-4 py-3 font-medium", className)} {...props} />;
+  return (
+    <th
+      className={cn("px-4 py-3 text-xs font-medium uppercase tracking-wide text-zinc-500", className)}
+      {...props}
+    />
+  );
 }
 
 export function TableCell({ className, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {

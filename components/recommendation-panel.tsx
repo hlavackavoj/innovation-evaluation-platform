@@ -1,6 +1,12 @@
-import { Recommendation } from "@/lib/recommendations";
+type RecommendationPanelItem = {
+  id: string;
+  title: string;
+  description: string;
+  suggestedRole: string;
+  status?: string;
+};
 
-export function RecommendationPanel({ items }: { items: Recommendation[] }) {
+export function RecommendationPanel({ items }: { items: RecommendationPanelItem[] }) {
   return (
     <div className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-card">
       <div className="flex items-center justify-between">
@@ -21,17 +27,11 @@ export function RecommendationPanel({ items }: { items: Recommendation[] }) {
             <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-4">
                 <h3 className="font-semibold text-ink">{item.title}</h3>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    item.priority === "high" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800"
-                  }`}
-                >
-                  {item.priority} priority
-                </span>
+                {item.status ? <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">{item.status}</span> : null}
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
               <p className="mt-3 text-sm font-medium text-slate-700">
-                Suggested support roles: {item.suggestedRoles.join(", ")}
+                Suggested support role: {item.suggestedRole}
               </p>
             </div>
           ))

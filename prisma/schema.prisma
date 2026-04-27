@@ -14,7 +14,7 @@ enum UserRole {
   VIEWER
 }
 
-enum ProjectStage {
+enum PipelineStage {
   DISCOVERY
   VALIDATION
   MVP
@@ -73,6 +73,12 @@ enum BusinessReadiness {
   STRONG
 }
 
+enum RecommendationStatus {
+  PENDING
+  COMPLETED
+  DISMISSED
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String
@@ -117,7 +123,7 @@ model Project {
   title             String
   description       String
   field             String?
-  stage             ProjectStage          @default(DISCOVERY)
+  stage             PipelineStage         @default(DISCOVERY)
   priority          ProjectPriority       @default(MEDIUM)
   potentialLevel    ProjectPotentialLevel @default(LOW) @map("potential_level")
   ipStatus          String?
@@ -135,6 +141,7 @@ model Project {
   contacts          ProjectContact[]
   activities        Activity[]
   tasks             Task[]
+  recommendations   Recommendation[]
 }
 
 model ProjectContact {
@@ -171,4 +178,19 @@ model Task {
   updatedAt        DateTime        @updatedAt
   project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignedTo       User?           @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
+}
+
+model Recommendation {
+  id            String               @id @default(cuid())
+  title         String
+  description   String
+  ruleKey       String
+  projectId     String
+  status        RecommendationStatus @default(PENDING)
+  suggestedRole String
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  project       Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, ruleKey])
 }

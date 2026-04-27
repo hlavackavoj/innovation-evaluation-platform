@@ -1,36 +1,69 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LayoutDashboard, FolderKanban, Users, Building2, CheckSquare } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const links = [
-  { href: "/", label: "Dashboard" },
-  { href: "/projects", label: "Projects" },
-  { href: "/contacts", label: "Contacts" },
-  { href: "/organizations", label: "Organizations" },
-  { href: "/tasks", label: "Tasks" }
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/projects", label: "Projects", icon: FolderKanban, exact: false },
+  { href: "/contacts", label: "Contacts", icon: Users, exact: false },
+  { href: "/organizations", label: "Organizations", icon: Building2, exact: false },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare, exact: false }
 ];
 
-export function Navigation() {
+export function Navigation({ userName }: { userName: string }) {
+  const pathname = usePathname();
+  const initials = userName
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
   return (
-    <header className="border-b border-slate-200 bg-white/85 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <Link href="/" className="text-xl font-semibold tracking-tight text-ink">
-            Innovation Evaluation Platform
+    <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/90 backdrop-blur-sm">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
+        <div className="flex items-center gap-6">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600">
+              <span className="text-[10px] font-bold leading-none text-white">IEP</span>
+            </div>
+            <span className="hidden text-sm font-semibold text-zinc-900 sm:block">Launchpad</span>
           </Link>
-          <p className="text-sm text-slate-600">
-            CRM MVP for university and innovation-center pipeline management
-          </p>
+
+          <nav className="hidden items-center gap-0.5 md:flex">
+            {links.map(({ href, label, icon: Icon, exact }) => {
+              const isActive = exact ? pathname === href : pathname.startsWith(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+                  )}
+                >
+                  <Icon size={14} className="shrink-0" />
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
-        <nav className="flex flex-wrap gap-2">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-tealCore hover:text-tealCore"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs text-zinc-400 sm:block">Demo mode</span>
+          <div
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700"
+            title={userName}
+          >
+            {initials}
+          </div>
+        </div>
       </div>
     </header>
   );

@@ -2,10 +2,10 @@ import {
   ActivityType,
   BusinessReadiness,
   OrganizationType,
+  PipelineStage,
   PrismaClient,
   ProjectPotentialLevel,
   ProjectPriority,
-  ProjectStage,
   TaskStatus,
   TeamStrength,
   UserRole
@@ -15,6 +15,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   await prisma.projectContact.deleteMany();
+  await prisma.recommendation.deleteMany();
   await prisma.activity.deleteMany();
   await prisma.task.deleteMany();
   await prisma.project.deleteMany();
@@ -105,7 +106,7 @@ async function main() {
       description:
         "A university research project commercializing a rapid biosignal analysis workflow for early detection in outpatient care.",
       field: "Digital Health",
-      stage: ProjectStage.VALIDATION,
+      stage: PipelineStage.VALIDATION,
       priority: ProjectPriority.HIGH,
       potentialLevel: ProjectPotentialLevel.HIGH,
       ipStatus: null,
@@ -125,7 +126,7 @@ async function main() {
       description:
         "A spin-off candidate building modular robotics for repetitive laboratory workflows with strong technical differentiation.",
       field: "Robotics",
-      stage: ProjectStage.SCALING,
+      stage: PipelineStage.SCALING,
       priority: ProjectPriority.MEDIUM,
       potentialLevel: ProjectPotentialLevel.HIGH,
       ipStatus: "provisional patent filed",
