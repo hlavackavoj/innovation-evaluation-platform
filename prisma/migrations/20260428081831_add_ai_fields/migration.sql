@@ -1,3 +1,0 @@
--- Hotfix:
--- The index "Task_sourceActivityId_idx" may not exist in some environments (e.g. Neon),
--- so we intentionally keep this migration as a no-op.

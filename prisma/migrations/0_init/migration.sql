@@ -1,14 +1,14 @@
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'MANAGER', 'EVALUATOR', 'VIEWER');
+CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'MANAGER', 'EVALUATOR', 'USER', 'VIEWER');
 
 -- CreateEnum
-CREATE TYPE "ProjectStage" AS ENUM ('NEW_LEAD', 'INITIAL_SCREENING', 'NEED_MORE_INFO', 'EVALUATION', 'SUPPORT_PLAN', 'ACTIVE_SUPPORT', 'SPIN_OFF_CANDIDATE', 'ARCHIVED');
+CREATE TYPE "PipelineStage" AS ENUM ('DISCOVERY', 'VALIDATION', 'MVP', 'SCALING', 'SPIN_OFF');
 
 -- CreateEnum
 CREATE TYPE "ProjectPriority" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'URGENT');
 
 -- CreateEnum
-CREATE TYPE "ProjectPotential" AS ENUM ('UNKNOWN', 'LOW', 'MEDIUM', 'HIGH');
+CREATE TYPE "ProjectPotentialLevel" AS ENUM ('LOW', 'MEDIUM', 'HIGH');
 
 -- CreateEnum
 CREATE TYPE "ActivityType" AS ENUM ('MEETING', 'CALL', 'EMAIL', 'NOTE', 'WORKSHOP', 'EVALUATION');
@@ -25,13 +25,15 @@ CREATE TYPE "TeamStrength" AS ENUM ('TECHNICAL_ONLY', 'BALANCED', 'STRONG');
 -- CreateEnum
 CREATE TYPE "BusinessReadiness" AS ENUM ('WEAK', 'EMERGING', 'STRONG');
 
+-- CreateEnum
+CREATE TYPE "RecommendationStatus" AS ENUM ('PENDING', 'COMPLETED', 'DISMISSED');
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
-    "role" "UserRole" NOT NULL DEFAULT 'VIEWER',
-    "passwordHash" TEXT,
+    "role" "UserRole" NOT NULL DEFAULT 'USER',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -72,9 +74,9 @@ CREATE TABLE "Project" (
     "title" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "field" TEXT,
-    "stage" "ProjectStage" NOT NULL DEFAULT 'NEW_LEAD',
+    "stage" "PipelineStage" NOT NULL DEFAULT 'DISCOVERY',
     "priority" "ProjectPriority" NOT NULL DEFAULT 'MEDIUM',
-    "potential" "ProjectPotential" NOT NULL DEFAULT 'UNKNOWN',
+    "potential_level" "ProjectPotentialLevel" NOT NULL DEFAULT 'LOW',
     "ipStatus" TEXT,
     "teamStrength" "TeamStrength",
     "businessReadiness" "BusinessReadiness",
@@ -104,6 +106,9 @@ CREATE TABLE "Activity" (
     "userId" TEXT,
     "type" "ActivityType" NOT NULL,
     "note" TEXT NOT NULL,
+    "emailMessageId" TEXT,
+    "emailParentId" TEXT,
+    "aiAnalysis" JSONB,
     "activityDate" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -115,6 +120,7 @@ CREATE TABLE "Task" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
     "assignedToUserId" TEXT,
+    "sourceActivityId" TEXT,
     "title" TEXT NOT NULL,
     "description" TEXT,
     "status" "TaskStatus" NOT NULL DEFAULT 'TODO',
@@ -126,8 +132,62 @@ CREATE TABLE "Task" (
     CONSTRAINT "Task_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "Recommendation" (
+    "id" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "ruleKey" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "status" "RecommendationStatus" NOT NULL DEFAULT 'PENDING',
+    "suggestedRole" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Recommendation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Template" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "fileUrl" TEXT NOT NULL,
+    "targetStage" "PipelineStage" NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Template_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ProjectDocument" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "templateId" TEXT,
+    "name" TEXT NOT NULL,
+    "fileUrl" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ProjectDocument_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Activity_emailMessageId_key" ON "Activity"("emailMessageId");
+
+-- CreateIndex
+CREATE INDEX "Task_sourceActivityId_idx" ON "Task"("sourceActivityId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Recommendation_projectId_ruleKey_key" ON "Recommendation"("projectId", "ruleKey");
+
+-- CreateIndex
+CREATE INDEX "ProjectDocument_projectId_createdAt_idx" ON "ProjectDocument"("projectId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ProjectDocument_templateId_idx" ON "ProjectDocument"("templateId");
 
 -- AddForeignKey
 ALTER TABLE "Contact" ADD CONSTRAINT "Contact_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -155,3 +215,16 @@ ALTER TABLE "Task" ADD CONSTRAINT "Task_projectId_fkey" FOREIGN KEY ("projectId"
 
 -- AddForeignKey
 ALTER TABLE "Task" ADD CONSTRAINT "Task_assignedToUserId_fkey" FOREIGN KEY ("assignedToUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Task" ADD CONSTRAINT "Task_sourceActivityId_fkey" FOREIGN KEY ("sourceActivityId") REFERENCES "Activity"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Recommendation" ADD CONSTRAINT "Recommendation_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProjectDocument" ADD CONSTRAINT "ProjectDocument_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProjectDocument" ADD CONSTRAINT "ProjectDocument_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "Template"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
