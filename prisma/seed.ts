@@ -10,10 +10,13 @@ import {
   TeamStrength,
   UserRole
 } from "@prisma/client";
+import { hashPassword } from "../lib/passwords";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  await prisma.projectDocument.deleteMany();
+  await prisma.template.deleteMany();
   await prisma.projectContact.deleteMany();
   await prisma.recommendation.deleteMany();
   await prisma.activity.deleteMany();
@@ -23,19 +26,23 @@ async function main() {
   await prisma.organization.deleteMany();
   await prisma.user.deleteMany();
 
+  const demoPasswordHash = await hashPassword("demo12345");
+
   const users = await Promise.all([
     prisma.user.create({
       data: {
         name: "Eva Novak",
         email: "eva@innovation.local",
-        role: UserRole.MANAGER
+        role: UserRole.MANAGER,
+        passwordHash: demoPasswordHash
       }
     }),
     prisma.user.create({
       data: {
         name: "Martin Svoboda",
         email: "martin@innovation.local",
-        role: UserRole.EVALUATOR
+        role: UserRole.EVALUATOR,
+        passwordHash: demoPasswordHash
       }
     })
   ]);
@@ -205,6 +212,58 @@ async function main() {
         dueDate: new Date("2026-05-14")
       }
     ]
+  });
+
+  const templates = await Promise.all([
+    prisma.template.create({
+      data: {
+        name: "Discovery Brief",
+        description: "A lightweight intake template to frame the opportunity, research origin, and first problem statement.",
+        storagePath: "seed/templates/discovery-brief.docx",
+        targetStage: PipelineStage.DISCOVERY
+      }
+    }),
+    prisma.template.create({
+      data: {
+        name: "Validation Interview Guide",
+        description: "Interview script and evidence capture sheet for customer and stakeholder discovery.",
+        storagePath: "seed/templates/validation-interview-guide.docx",
+        targetStage: PipelineStage.VALIDATION
+      }
+    }),
+    prisma.template.create({
+      data: {
+        name: "Pilot Success Metrics Worksheet",
+        description: "Template for pilot goals, owners, adoption metrics, and review cadence.",
+        storagePath: "seed/templates/pilot-success-metrics.xlsx",
+        targetStage: PipelineStage.MVP
+      }
+    }),
+    prisma.template.create({
+      data: {
+        name: "Investor Readiness Pack",
+        description: "Starter deck and checklist for traction, financing narrative, and partner conversations.",
+        storagePath: "seed/templates/investor-readiness-pack.pptx",
+        targetStage: PipelineStage.SCALING
+      }
+    }),
+    prisma.template.create({
+      data: {
+        name: "Spin-off Formation Checklist",
+        description: "Checklist covering IP transfer, governance, founder setup, and launch milestones.",
+        storagePath: "seed/templates/spin-off-formation-checklist.pdf",
+        targetStage: PipelineStage.SPIN_OFF
+      }
+    })
+  ]);
+
+  await prisma.projectDocument.create({
+    data: {
+      projectId: projectA.id,
+      templateId: templates[1].id,
+      name: "BioSignal interview script v1",
+      storagePath: "seed/projects/biosignal-interview-script-v1.docx"
+    }
   });
 }
 

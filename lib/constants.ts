@@ -1,11 +1,13 @@
 import {
   ActivityType,
   BusinessReadiness,
+  OrganizationType,
   PipelineStage,
   ProjectPotentialLevel,
   ProjectPriority,
   TaskStatus,
-  TeamStrength
+  TeamStrength,
+  UserRole
 } from "@prisma/client";
 
 export const pipelineStages: PipelineStage[] = [
@@ -23,6 +25,8 @@ export const activityTypeOptions = Object.values(ActivityType);
 export const taskStatusOptions = Object.values(TaskStatus);
 export const teamStrengthOptions = Object.values(TeamStrength);
 export const businessReadinessOptions = Object.values(BusinessReadiness);
+export const organizationTypeOptions = Object.values(OrganizationType);
+export const userRoleOptions = Object.values(UserRole);
 
 export const stageDescriptions: Record<PipelineStage, string> = {
   DISCOVERY: "Early discovery work to clarify the opportunity, team readiness, and first institutional fit.",

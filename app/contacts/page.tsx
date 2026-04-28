@@ -1,15 +1,45 @@
 import { Users } from "lucide-react";
+import Link from "next/link";
+import { ContactForm } from "@/components/contact-form";
 import { Shell } from "@/components/shell";
-import { getContacts } from "@/lib/data";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { createContactAction, updateContactAction } from "@/app/contacts/actions";
+import { getContacts, getOrganizations } from "@/lib/data";
 
-export default async function ContactsPage() {
-  const contacts = await getContacts();
+export default async function ContactsPage({
+  searchParams
+}: {
+  searchParams?: { edit?: string };
+}) {
+  const [contacts, organizations] = await Promise.all([getContacts(), getOrganizations()]);
+  const contactToEdit = searchParams?.edit ? contacts.find((contact) => contact.id === searchParams.edit) : undefined;
+  const formAction = contactToEdit ? updateContactAction.bind(null, contactToEdit.id) : createContactAction;
 
   return (
     <Shell
       title="Contacts"
       description="Researchers, students, mentors, evaluators, and other people in the innovation pipeline."
     >
+      <div className="mb-5 grid gap-5 lg:grid-cols-[360px,1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{contactToEdit ? "Edit Contact" : "Add Contact"}</CardTitle>
+            <CardDescription>
+              Keep project stakeholders and external experts ready for CRM workflows.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ContactForm
+              action={formAction}
+              contact={contactToEdit}
+              organizations={organizations}
+              submitLabel={contactToEdit ? "Save contact" : "Create contact"}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
       {contacts.length > 0 ? (
         <div className="grid gap-3 lg:grid-cols-2">
           {contacts.map((contact) => (
@@ -30,6 +60,9 @@ export default async function ContactsPage() {
                     </p>
                   </div>
                 </div>
+                <Link href={`/contacts?edit=${contact.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                  Edit
+                </Link>
               </div>
 
               <div className="mt-4 space-y-1">

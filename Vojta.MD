@@ -63,6 +63,8 @@ V sekci **Environment Variables** (na stránce importu projektu nebo v Settings 
 | Klíč | Hodnota | Popis |
 |------|---------|-------|
 | `DATABASE_URL` | `postgresql://...` (poolovaná URL z Neau) | Připojení k databázi |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` | URL Supabase projektu pro Storage |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` (service role key) | Server-side klíč pro upload souborů do Storage |
 | `NEXTAUTH_URL` | `https://tvoje-app.vercel.app` | Produkční URL tvé aplikace (zjistíš po prvním deployi) |
 | `NEXTAUTH_SECRET` | *(viz níže jak vygenerovat)* | Tajný klíč pro NextAuth sessions |
 | `AUTH_GOOGLE_ID` | *(z Google Cloud Console)* | Client ID pro Google OAuth (pokud používáš) |
@@ -81,6 +83,14 @@ Zkopíruj výstup (40+ znaků) a vlož jako hodnotu `NEXTAUTH_SECRET`.
 ### Prostředí
 
 Nastav všechny proměnné pro: ✅ Production ✅ Preview ✅ Development
+
+### Supabase Storage (Document Uploads)
+
+1. V Supabase otevři **Storage** → **Create bucket**
+2. Název bucketu: `project-documents`
+3. Visibility: **Public** (aplikace ukládá public download URL)
+4. Ve Vercelu nastav `NEXT_PUBLIC_SUPABASE_URL` a `SUPABASE_SERVICE_ROLE_KEY`
+5. `SUPABASE_SERVICE_ROLE_KEY` dávej pouze do server environments, nikdy do klientského kódu
 
 ### Poznámka k NEXTAUTH_URL
 

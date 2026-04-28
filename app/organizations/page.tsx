@@ -1,16 +1,49 @@
 import { Building2 } from "lucide-react";
+import Link from "next/link";
+import { OrganizationForm } from "@/components/organization-form";
 import { Shell } from "@/components/shell";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { createOrganizationAction, updateOrganizationAction } from "@/app/organizations/actions";
 import { getOrganizations } from "@/lib/data";
 import { formatEnumLabel } from "@/lib/format";
 
-export default async function OrganizationsPage() {
+export default async function OrganizationsPage({
+  searchParams
+}: {
+  searchParams?: { edit?: string };
+}) {
   const organizations = await getOrganizations();
+  const organizationToEdit = searchParams?.edit
+    ? organizations.find((organization) => organization.id === searchParams.edit)
+    : undefined;
+  const formAction = organizationToEdit
+    ? updateOrganizationAction.bind(null, organizationToEdit.id)
+    : createOrganizationAction;
 
   return (
     <Shell
       title="Organizations"
       description="Universities, faculties, innovation centers, and partner companies connected to the pipeline."
     >
+      <div className="mb-5 grid gap-5 lg:grid-cols-[360px,1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{organizationToEdit ? "Edit Organization" : "Add Organization"}</CardTitle>
+            <CardDescription>
+              Track institutions and partners so projects always have a clear organizational context.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <OrganizationForm
+              action={formAction}
+              organization={organizationToEdit}
+              submitLabel={organizationToEdit ? "Save organization" : "Create organization"}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
       {organizations.length > 0 ? (
         <div className="grid gap-3 lg:grid-cols-2">
           {organizations.map((org) => (
@@ -31,6 +64,11 @@ export default async function OrganizationsPage() {
                 <span className="shrink-0 rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
                   {org.projects.length} project{org.projects.length !== 1 ? "s" : ""}
                 </span>
+              </div>
+              <div className="mt-3">
+                <Link href={`/organizations?edit=${org.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                  Edit
+                </Link>
               </div>
 
               {org.website && <p className="mt-4 text-xs text-indigo-600">{org.website}</p>}

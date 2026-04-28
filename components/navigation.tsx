@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Users, Building2, CheckSquare } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, Building2, CheckSquare, FileStack } from "lucide-react";
+import type { UserRole } from "@prisma/client";
+import { AuthSignOutButton } from "@/components/auth-sign-out-button";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -10,10 +12,11 @@ const links = [
   { href: "/projects", label: "Projects", icon: FolderKanban, exact: false },
   { href: "/contacts", label: "Contacts", icon: Users, exact: false },
   { href: "/organizations", label: "Organizations", icon: Building2, exact: false },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare, exact: false }
+  { href: "/tasks", label: "Tasks", icon: CheckSquare, exact: false },
+  { href: "/templates", label: "Templates", icon: FileStack, exact: false }
 ];
 
-export function Navigation({ userName }: { userName: string }) {
+export function Navigation({ userName, userRole }: { userName: string; userRole: UserRole }) {
   const pathname = usePathname();
   const initials = userName
     .split(" ")
@@ -56,7 +59,10 @@ export function Navigation({ userName }: { userName: string }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs text-zinc-400 sm:block">Demo mode</span>
+          <span className="hidden rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500 sm:block">
+            {userRole}
+          </span>
+          <AuthSignOutButton />
           <div
             className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700"
             title={userName}

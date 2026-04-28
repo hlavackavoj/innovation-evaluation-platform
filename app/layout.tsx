@@ -24,8 +24,8 @@ export default async function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="bg-zinc-50 font-sans antialiased">
-        <Navigation userName={currentUser?.name ?? "Seed user"} />
-        <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
+        {currentUser ? <Navigation userName={currentUser.name} userRole={currentUser.role} /> : null}
+        {currentUser ? <main className="mx-auto max-w-7xl px-6 py-8">{children}</main> : children}
       </body>
     </html>
   );

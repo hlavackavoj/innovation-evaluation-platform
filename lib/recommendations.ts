@@ -3,15 +3,26 @@ import {
   PipelineStage,
   ProjectPotentialLevel,
   RecommendationStatus,
+  Template,
   TeamStrength
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { createSignedFileUrl } from "@/lib/supabase-storage";
 
 export type RecommendationDefinition = {
   ruleKey: string;
   title: string;
   description: string;
   suggestedRole: string;
+};
+
+export type TemplateLink = Pick<Template, "id" | "name" | "description" | "storagePath" | "targetStage"> & {
+  fileUrl: string;
+};
+
+export type RecommendationWithTemplates<TRecommendation> = TRecommendation & {
+  primaryTemplate: TemplateLink | null;
+  templates: TemplateLink[];
 };
 
 type RecommendationInput = {
@@ -118,7 +129,7 @@ function isOlderThanThirtyDays(value: Date | null) {
   return value < thirtyDaysAgo;
 }
 
-export function getProjectRecommendations(project: RecommendationInput): RecommendationDefinition[] {
+function buildProjectRecommendations(project: RecommendationInput): RecommendationDefinition[] {
   const recommendations = [...stageRecommendations[project.stage]];
 
   if (!project.ipStatus || !project.ipStatus.trim()) {
@@ -181,6 +192,17 @@ export function getProjectRecommendations(project: RecommendationInput): Recomme
   return recommendations;
 }
 
+export async function getProjectRecommendations(
+  project: RecommendationInput
+): Promise<RecommendationWithTemplates<RecommendationDefinition>[]> {
+  const [recommendations, templates] = await Promise.all([
+    Promise.resolve(buildProjectRecommendations(project)),
+    getStageTemplates(project.stage)
+  ]);
+
+  return attachTemplatesToRecommendations(recommendations, templates);
+}
+
 type SyncRecommendationInput = RecommendationInput & {
   id: string;
   recommendations: {
@@ -191,7 +213,7 @@ type SyncRecommendationInput = RecommendationInput & {
 };
 
 export async function syncProjectRecommendations(project: SyncRecommendationInput) {
-  const expectedRecommendations = getProjectRecommendations(project);
+  const expectedRecommendations = buildProjectRecommendations(project);
   const expectedKeys = new Set(expectedRecommendations.map((item) => item.ruleKey));
   const existingByKey = new Map(project.recommendations.map((item) => [item.ruleKey, item]));
 
@@ -246,4 +268,33 @@ export async function syncProjectRecommendations(project: SyncRecommendationInpu
         })
       : Promise.resolve()
   ]);
+}
+
+export async function getStageTemplates(stage: PipelineStage): Promise<TemplateLink[]> {
+  const templates = await prisma.template.findMany({
+    where: {
+      targetStage: stage
+    },
+    orderBy: [{ createdAt: "asc" }]
+  });
+
+  return Promise.all(
+    templates.map(async (template) => ({
+      ...template,
+      fileUrl: await createSignedFileUrl(template.storagePath)
+    }))
+  );
+}
+
+export function attachTemplatesToRecommendations<TRecommendation extends object>(
+  recommendations: TRecommendation[],
+  templates: TemplateLink[]
+): RecommendationWithTemplates<TRecommendation>[] {
+  const primaryTemplate = templates[0] ?? null;
+
+  return recommendations.map((recommendation) => ({
+    ...recommendation,
+    primaryTemplate,
+    templates
+  }));
 }
