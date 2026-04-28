@@ -4,8 +4,7 @@ import { Inter } from "next/font/google";
 import { UserRole } from "@prisma/client";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { Navigation } from "@/components/navigation";
-import { mapKindeRolesToAppRole } from "@/lib/kinde-roles";
-import { prisma } from "@/lib/prisma";
+import { ensureUserInDb } from "@/lib/auth";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -22,43 +21,18 @@ export default async function RootLayout({
 }: Readonly<{
   children: ReactNode;
 }>) {
-  const { isAuthenticated, getUser, getClaim } = getKindeServerSession();
-  const authenticated = await isAuthenticated();
-
   let currentUser: { name: string; role: UserRole } | null = null;
 
-  if (authenticated) {
-    const [kindeUser, rolesClaim] = await Promise.all([
-      getUser(),
-      getClaim("roles", "id_token")
-    ]);
-    const email = kindeUser?.email?.trim().toLowerCase();
+  try {
+    const { isAuthenticated } = getKindeServerSession();
+    const authenticated = await isAuthenticated();
 
-    if (email) {
-      const fullName = `${kindeUser?.given_name ?? ""} ${kindeUser?.family_name ?? ""}`.trim();
-      const fallbackName = kindeUser?.email?.split("@")[0] ?? "Kinde User";
-      const resolvedName = fullName || kindeUser?.username || fallbackName;
-      const mappedRole = mapKindeRolesToAppRole(rolesClaim?.value) as UserRole;
-
-      const user = await prisma.user.upsert({
-        where: { email },
-        update: {
-          name: resolvedName,
-          role: mappedRole
-        },
-        create: {
-          email,
-          name: resolvedName,
-          role: mappedRole
-        },
-        select: {
-          name: true,
-          role: true
-        }
-      });
-
-      currentUser = user;
+    // Never call Prisma/Kinde user profile when the request is unauthenticated.
+    if (authenticated) {
+      currentUser = await ensureUserInDb();
     }
+  } catch (error) {
+    console.error("[Kinde Sync Error]:", error);
   }
 
   return (
