@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { FolderKanban, ClipboardList, ArrowRight, Activity, type LucideIcon } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Shell } from "@/components/shell";
@@ -21,6 +23,13 @@ export default async function DashboardPage({
 }: {
   searchParams?: { pending_approval?: string };
 }) {
+  const { isAuthenticated } = getKindeServerSession();
+  const authenticated = await isAuthenticated();
+
+  if (!authenticated) {
+    redirect("/login?callbackUrl=/");
+  }
+
   const { stats, projectsByStage, recentActivities } = await getDashboardData();
 
   const showPendingApproval = searchParams?.pending_approval === "1";
