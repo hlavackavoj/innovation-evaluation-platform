@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Inter } from "next/font/google";
+import { UserRole } from "@prisma/client";
+import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { Navigation } from "@/components/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { mapKindeRolesToAppRole } from "@/lib/kinde-roles";
+import { prisma } from "@/lib/prisma";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -19,7 +22,44 @@ export default async function RootLayout({
 }: Readonly<{
   children: ReactNode;
 }>) {
-  const currentUser = await getCurrentUser();
+  const { isAuthenticated, getUser, getClaim } = getKindeServerSession();
+  const authenticated = await isAuthenticated();
+
+  let currentUser: { name: string; role: UserRole } | null = null;
+
+  if (authenticated) {
+    const [kindeUser, rolesClaim] = await Promise.all([
+      getUser(),
+      getClaim("roles", "id_token")
+    ]);
+    const email = kindeUser?.email?.trim().toLowerCase();
+
+    if (email) {
+      const fullName = `${kindeUser?.given_name ?? ""} ${kindeUser?.family_name ?? ""}`.trim();
+      const fallbackName = kindeUser?.email?.split("@")[0] ?? "Kinde User";
+      const resolvedName = fullName || kindeUser?.username || fallbackName;
+      const mappedRole = mapKindeRolesToAppRole(rolesClaim?.value) as UserRole;
+
+      const user = await prisma.user.upsert({
+        where: { email },
+        update: {
+          name: resolvedName,
+          role: mappedRole
+        },
+        create: {
+          email,
+          name: resolvedName,
+          role: mappedRole
+        },
+        select: {
+          name: true,
+          role: true
+        }
+      });
+
+      currentUser = user;
+    }
+  }
 
   return (
     <html lang="en" className={inter.variable}>

@@ -10,7 +10,6 @@ import {
   TeamStrength,
   UserRole
 } from "@prisma/client";
-import { hashPassword } from "../lib/passwords";
 
 const prisma = new PrismaClient();
 
@@ -26,23 +25,20 @@ async function main() {
   await prisma.organization.deleteMany();
   await prisma.user.deleteMany();
 
-  const demoPasswordHash = await hashPassword("demo12345");
 
   const users = await Promise.all([
     prisma.user.create({
       data: {
         name: "Eva Novak",
         email: "eva@innovation.local",
-        role: UserRole.MANAGER,
-        passwordHash: demoPasswordHash
+        role: UserRole.MANAGER
       }
     }),
     prisma.user.create({
       data: {
         name: "Martin Svoboda",
         email: "martin@innovation.local",
-        role: UserRole.EVALUATOR,
-        passwordHash: demoPasswordHash
+        role: UserRole.EVALUATOR
       }
     })
   ]);

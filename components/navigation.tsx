@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Users, Building2, CheckSquare, FileStack } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, Building2, CheckSquare, FileStack, LogOut } from "lucide-react";
+import { LogoutLink } from "@kinde-oss/kinde-auth-nextjs/components";
 import type { UserRole } from "@prisma/client";
-import { AuthSignOutButton } from "@/components/auth-sign-out-button";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -62,7 +62,10 @@ export function Navigation({ userName, userRole }: { userName: string; userRole:
           <span className="hidden rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500 sm:block">
             {userRole}
           </span>
-          <AuthSignOutButton />
+          <LogoutLink className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800">
+            <LogOut size={12} />
+            Sign out
+          </LogoutLink>
           <div
             className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700"
             title={userName}

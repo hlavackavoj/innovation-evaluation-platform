@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LogoutLink } from "@kinde-oss/kinde-auth-nextjs/components";
+import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import {
   Zap,
   CheckCircle2,
@@ -75,6 +77,9 @@ export default async function ProjectDetailPage({
   const importedMessages = Number(searchParams?.importedMessages ?? "0");
   const importedTasks = Number(searchParams?.importedTasks ?? "0");
   const showImportSummary = Number.isFinite(importedMessages) && Number.isFinite(importedTasks) && importedMessages > 0;
+  const { getUser } = getKindeServerSession();
+  const sessionUser = await getUser();
+  const signedInUserName = [sessionUser?.given_name, sessionUser?.family_name].filter(Boolean).join(" ") || sessionUser?.email || "Signed-in user";
 
   return (
     <>
@@ -122,12 +127,21 @@ export default async function ProjectDetailPage({
           </div>
 
           {activeTab === "canvas" ? (
-            <ProjectCanvasView
-              projectId={project.id}
-              projectStage={project.stage}
-              activities={project.activities}
-              tasks={project.tasks}
-            />
+            <div className="relative">
+              <ProjectCanvasView
+                projectId={project.id}
+                projectStage={project.stage}
+                activities={project.activities}
+                tasks={project.tasks}
+              />
+              <div className="pointer-events-auto absolute right-3 top-3 z-30 rounded-lg border border-zinc-700/60 bg-zinc-950/85 px-3 py-2 text-xs text-zinc-200 shadow-lg backdrop-blur-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{signedInUserName}</span>
+                  <span className="text-zinc-500">|</span>
+                  <LogoutLink className="text-indigo-300 transition hover:text-indigo-200">Logout</LogoutLink>
+                </div>
+              </div>
+            </div>
           ) : (
           <div className="grid gap-5 xl:grid-cols-[1fr,320px]">
             {/* Main column */}

@@ -16,8 +16,14 @@ const statColors: Record<string, { bg: string; icon: string }> = {
   "Pending Tasks": { bg: "bg-rose-50", icon: "text-rose-600" }
 };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams?: { pending_approval?: string };
+}) {
   const { stats, projectsByStage, recentActivities } = await getDashboardData();
+
+  const showPendingApproval = searchParams?.pending_approval === "1";
 
   return (
     <Shell
@@ -29,6 +35,12 @@ export default async function DashboardPage() {
         </Link>
       }
     >
+      {showPendingApproval ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Čekejte na schválení přístupu
+        </div>
+      ) : null}
+
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2">
         {stats.map((stat) => {

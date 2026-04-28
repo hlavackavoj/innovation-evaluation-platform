@@ -1,32 +1,19 @@
-import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
-import { authConfig } from "@/lib/auth-config";
+import { withAuth } from "@kinde-oss/kinde-auth-nextjs/middleware";
+import { hasProjectsAccessByKindeRole } from "@/lib/kinde-roles";
 
-const publicPaths = new Set(["/login", "/api/health"]);
-const { auth } = NextAuth(authConfig);
+export default withAuth((req: any) => {
+  const roleClaim = req.kindeAuth?.token?.roles ?? req.kindeAuth?.token?.["x-hasura-roles"];
 
-export default auth((req) => {
-  const { pathname, search } = req.nextUrl;
-  const isPublicPath =
-    publicPaths.has(pathname) ||
-    pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico";
-
-  if (!req.auth?.user && !isPublicPath) {
-    const callbackUrl = `${pathname}${search}`;
-    const loginUrl = new URL("/login", req.nextUrl.origin);
-    loginUrl.searchParams.set("callbackUrl", callbackUrl);
-    return NextResponse.redirect(loginUrl);
+  if (hasProjectsAccessByKindeRole(roleClaim)) {
+    return NextResponse.next();
   }
 
-  if (req.auth?.user && pathname === "/login") {
-    return NextResponse.redirect(new URL("/", req.nextUrl.origin));
-  }
-
-  return NextResponse.next();
+  const url = new URL("/", req.nextUrl.origin);
+  url.searchParams.set("pending_approval", "1");
+  return NextResponse.redirect(url);
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]
+  matcher: ["/projects/:path*"]
 };
