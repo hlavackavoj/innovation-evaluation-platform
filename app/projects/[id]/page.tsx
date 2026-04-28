@@ -20,6 +20,7 @@ import { FeedbackToast } from "@/components/feedback-toast";
 import { PipelineStepper } from "@/components/pipeline-stepper";
 import { ProjectDocumentUploadForm } from "@/components/project-document-upload-form";
 import { ProjectCommunicationTree } from "@/components/ProjectCommunicationTree";
+import { ProjectCanvasView } from "@/components/ProjectCanvasView";
 import { EmailImportForm } from "@/components/EmailImportForm";
 import { Shell } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
@@ -60,7 +61,8 @@ export default async function ProjectDetailPage({
 
   if (!project) notFound();
 
-  const activeTab = searchParams?.tab === "documents" ? "documents" : "overview";
+  const activeTab =
+    searchParams?.tab === "documents" ? "documents" : searchParams?.tab === "canvas" ? "canvas" : "overview";
   const updateStage = updateProjectStageAction.bind(null, project.id);
   const convertRecommendation = convertRecommendationToTaskAction.bind(null, project.id);
   const addProjectDocument = addProjectDocumentAction.bind(null, project.id);
@@ -100,6 +102,15 @@ export default async function ProjectDetailPage({
               Overview
             </Link>
             <Link
+              href={`/projects/${project.id}?tab=canvas`}
+              className={buttonVariants({
+                variant: activeTab === "canvas" ? "default" : "outline",
+                size: "sm"
+              })}
+            >
+              Canvas Map
+            </Link>
+            <Link
               href={`/projects/${project.id}?tab=documents`}
               className={buttonVariants({
                 variant: activeTab === "documents" ? "default" : "outline",
@@ -110,6 +121,14 @@ export default async function ProjectDetailPage({
             </Link>
           </div>
 
+          {activeTab === "canvas" ? (
+            <ProjectCanvasView
+              projectId={project.id}
+              projectStage={project.stage}
+              activities={project.activities}
+              tasks={project.tasks}
+            />
+          ) : (
           <div className="grid gap-5 xl:grid-cols-[1fr,320px]">
             {/* Main column */}
             <div className="space-y-5">
@@ -560,6 +579,7 @@ export default async function ProjectDetailPage({
               </Card>
             </div>
           </div>
+          )}
         </div>
       </Shell>
     </>
