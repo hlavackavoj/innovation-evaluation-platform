@@ -5,6 +5,7 @@ import { UserRole } from "@prisma/client";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { Navigation } from "@/components/navigation";
 import { ensureUserInDb } from "@/lib/auth";
+import { assertRequiredServerEnv, formatErrorForDisplay } from "@/lib/env";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -21,9 +22,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: ReactNode;
 }>) {
-  let currentUser: { name: string; role: UserRole } | null = null;
-
   try {
+    assertRequiredServerEnv();
+
+    let currentUser: { name: string; role: UserRole } | null = null;
     const { isAuthenticated } = getKindeServerSession();
     const authenticated = await isAuthenticated();
 
@@ -31,16 +33,23 @@ export default async function RootLayout({
     if (authenticated) {
       currentUser = await ensureUserInDb();
     }
+    return (
+      <html lang="en" className={inter.variable}>
+        <body className="bg-zinc-50 font-sans antialiased">
+          {currentUser ? <Navigation userName={currentUser.name} userRole={currentUser.role} /> : null}
+          {currentUser ? <main className="mx-auto max-w-7xl px-6 py-8">{children}</main> : children}
+        </body>
+      </html>
+    );
   } catch (error) {
-    console.error("[Kinde Sync Error]:", error);
+    console.error("CRITICAL_LAYOUT_ERROR:", error);
+    const formattedError = formatErrorForDisplay(error);
+    return (
+      <html lang="en" className={inter.variable}>
+        <body className="bg-zinc-50 font-sans antialiased">
+          <div>Error: {formattedError}</div>
+        </body>
+      </html>
+    );
   }
-
-  return (
-    <html lang="en" className={inter.variable}>
-      <body className="bg-zinc-50 font-sans antialiased">
-        {currentUser ? <Navigation userName={currentUser.name} userRole={currentUser.role} /> : null}
-        {currentUser ? <main className="mx-auto max-w-7xl px-6 py-8">{children}</main> : children}
-      </body>
-    </html>
-  );
 }
