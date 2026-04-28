@@ -9,7 +9,7 @@ type KindeRolesClaim =
   | null
   | undefined;
 
-export type AppAccessRole = "ADMIN" | "EVALUATOR" | "USER";
+export type AppAccessRole = "ADMIN" | "MANAGER" | "EVALUATOR" | "VIEWER";
 
 function toRoleKeys(value: unknown): string[] {
   if (!value) return [];
@@ -59,14 +59,19 @@ export function mapKindeRolesToAppRole(claim: KindeRolesClaim): AppAccessRole {
     return "ADMIN";
   }
 
+  if (roles.includes("manager")) {
+    return "MANAGER";
+  }
+
   if (roles.includes("evaluator")) {
     return "EVALUATOR";
   }
 
-  return "USER";
+  // Use VIEWER as a safe fallback compatible with production enum values.
+  return "VIEWER";
 }
 
 export function hasProjectsAccessByKindeRole(claim: KindeRolesClaim): boolean {
   const role = mapKindeRolesToAppRole(claim);
-  return role === "ADMIN" || role === "EVALUATOR";
+  return role === "ADMIN" || role === "MANAGER" || role === "EVALUATOR";
 }
