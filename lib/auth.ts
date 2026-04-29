@@ -1,7 +1,48 @@
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import type { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { mapKindeRolesToAppRole } from "@/lib/kinde-roles";
+
+type KindeRoleLike = { key?: string | null; name?: string | null };
+
+function collectRoleKeys(value: unknown): string[] {
+  if (!value) return [];
+
+  if (typeof value === "string") {
+    return [value.toLowerCase()];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectRoleKeys(item));
+  }
+
+  if (typeof value === "object") {
+    const role = value as KindeRoleLike & { value?: unknown };
+    const direct = [role.key, role.name]
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.toLowerCase());
+    return [...direct, ...collectRoleKeys(role.value)];
+  }
+
+  return [];
+}
+
+function resolveRoleFromSources(...sources: unknown[]): UserRole {
+  const roleKeys = [...new Set(sources.flatMap((source) => collectRoleKeys(source)))];
+
+  if (roleKeys.some((key) => key.includes("admin"))) {
+    return "ADMIN";
+  }
+
+  if (roleKeys.some((key) => key.includes("manager"))) {
+    return "MANAGER";
+  }
+
+  if (roleKeys.some((key) => key.includes("evaluator"))) {
+    return "EVALUATOR";
+  }
+
+  return "VIEWER";
+}
 
 export async function getCurrentUser() {
   const { getUser } = getKindeServerSession();
@@ -18,29 +59,37 @@ export async function getCurrentUser() {
 }
 
 export async function ensureUserInDb() {
-  const { getUser, getClaim } = getKindeServerSession();
-  const [kindeUser, rolesClaim] = await Promise.all([getUser(), getClaim("roles", "id_token")]);
+  const { getUser, getRoles, getClaim } = getKindeServerSession();
+  const [kindeUser, kindeRoles, rolesClaim] = await Promise.all([
+    getUser(),
+    getRoles(),
+    getClaim("roles", "id_token")
+  ]);
+  const kindeId = kindeUser?.id?.trim() ?? "";
   const email = kindeUser?.email?.trim().toLowerCase();
 
-  if (!email) {
+  if (!kindeId || !email) {
     return null;
   }
 
-  const fullName = `${kindeUser?.given_name ?? ""} ${kindeUser?.family_name ?? ""}`.trim();
+  const firstName = kindeUser?.given_name?.trim() ?? "";
+  const lastName = kindeUser?.family_name?.trim() ?? "";
+  const dbRole = resolveRoleFromSources(kindeRoles, rolesClaim?.value);
   const fallbackName = kindeUser?.email?.split("@")[0] ?? "Kinde User";
-  const resolvedName = fullName || kindeUser?.username || fallbackName;
-  const mappedRole = mapKindeRolesToAppRole(rolesClaim?.value) as UserRole;
+  const resolvedName = `${firstName} ${lastName}`.trim() || kindeUser?.username || fallbackName;
 
+  // NOTE: Current Prisma model has no `kindeId` unique column yet.
+  // Upsert is therefore keyed by `email` until schema is extended.
   return prisma.user.upsert({
     where: { email },
     update: {
       name: resolvedName,
-      role: mappedRole
+      role: dbRole
     },
     create: {
       email,
       name: resolvedName,
-      role: mappedRole
+      role: dbRole
     },
     select: {
       id: true,
