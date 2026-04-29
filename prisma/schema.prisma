@@ -118,7 +118,7 @@ model User {
   ownedProjects Project[] @relation("ProjectOwner")
   activities    Activity[]
   assignedTasks Task[]
-  emailConnections EmailAccountConnection[]
+  emailConnections EmailAccount[]
   syncJobs      EmailSyncJob[]
   auditLogs     AuditLog[]
 }
@@ -264,7 +264,7 @@ model ProjectDocument {
   @@index([templateId])
 }
 
-model EmailAccountConnection {
+model EmailAccount {
   id                    String                 @id @default(cuid())
   userId                 String
   provider               EmailProvider
@@ -286,6 +286,7 @@ model EmailAccountConnection {
 
   @@unique([provider, externalAccountId])
   @@index([userId, status])
+  @@map("EmailAccountConnection")
 }
 
 model EmailMessage {
@@ -306,7 +307,7 @@ model EmailMessage {
   hasBody                 Boolean                @default(false)
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
-  accountConnection       EmailAccountConnection @relation(fields: [accountConnectionId], references: [id], onDelete: Cascade)
+  accountConnection       EmailAccount @relation(fields: [accountConnectionId], references: [id], onDelete: Cascade)
   projectLinks            ProjectEmailLink[]
   syncJobs                EmailSyncJob[]         @relation("EmailMessagesInJob")
   activities              Activity[]
@@ -334,7 +335,7 @@ model EmailSyncCursor {
   cursorKey           String
   cursorValue         String
   updatedAt           DateTime               @updatedAt
-  accountConnection   EmailAccountConnection @relation(fields: [accountConnectionId], references: [id], onDelete: Cascade)
+  accountConnection   EmailAccount @relation(fields: [accountConnectionId], references: [id], onDelete: Cascade)
 
   @@unique([accountConnectionId, cursorKey])
 }
@@ -363,7 +364,7 @@ model EmailSyncJob {
   updatedAt           DateTime                @updatedAt
   user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   project             Project?                @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  accountConnection   EmailAccountConnection? @relation(fields: [accountConnectionId], references: [id], onDelete: SetNull)
+  accountConnection   EmailAccount? @relation(fields: [accountConnectionId], references: [id], onDelete: SetNull)
   importedMessages    EmailMessage[]          @relation("EmailMessagesInJob")
 
   @@index([userId, createdAt])

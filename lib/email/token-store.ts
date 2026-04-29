@@ -19,32 +19,42 @@ export async function upsertEmailConnection(input: UpsertConnectionInput) {
       ? new Date(Date.now() + input.expiresInSeconds * 1000)
       : null;
 
-  return prisma.emailAccountConnection.upsert({
+  const existing = await prisma.emailAccount.findUnique({
     where: {
       provider_externalAccountId: {
         provider: input.provider,
         externalAccountId: input.externalAccountId
       }
-    },
-    create: {
-      userId: input.userId,
-      provider: input.provider,
-      externalAccountId: input.externalAccountId,
+    }
+  });
+
+  if (existing && existing.userId !== input.userId) {
+    throw new Error("Mailbox account is already linked to a different user.");
+  }
+
+  if (!existing) {
+    return prisma.emailAccount.create({
+      data: {
+        userId: input.userId,
+        provider: input.provider,
+        externalAccountId: input.externalAccountId,
+        emailAddress: input.emailAddress,
+        encryptedAccessToken: encryptSecret(input.accessToken),
+        encryptedRefreshToken: input.refreshToken ? encryptSecret(input.refreshToken) : null,
+        tokenExpiresAt,
+        scopes: input.scopes,
+        status: EmailConnectionStatus.ACTIVE,
+        lastError: null
+      }
+    });
+  }
+
+  return prisma.emailAccount.update({
+    where: { id: existing.id },
+    data: {
       emailAddress: input.emailAddress,
       encryptedAccessToken: encryptSecret(input.accessToken),
-      encryptedRefreshToken: input.refreshToken ? encryptSecret(input.refreshToken) : null,
-      tokenExpiresAt,
-      scopes: input.scopes,
-      status: EmailConnectionStatus.ACTIVE,
-      lastError: null
-    },
-    update: {
-      userId: input.userId,
-      emailAddress: input.emailAddress,
-      encryptedAccessToken: encryptSecret(input.accessToken),
-      encryptedRefreshToken: input.refreshToken
-        ? encryptSecret(input.refreshToken)
-        : undefined,
+      encryptedRefreshToken: input.refreshToken ? encryptSecret(input.refreshToken) : undefined,
       tokenExpiresAt,
       scopes: input.scopes,
       status: EmailConnectionStatus.ACTIVE,
@@ -54,7 +64,7 @@ export async function upsertEmailConnection(input: UpsertConnectionInput) {
 }
 
 export async function listUserEmailConnections(userId: string) {
-  return prisma.emailAccountConnection.findMany({
+  return prisma.emailAccount.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
     select: {
@@ -75,7 +85,7 @@ export async function disconnectEmailConnection(userId: string, provider: EmailP
     ? { id: connectionId, userId, provider }
     : { userId, provider, status: EmailConnectionStatus.ACTIVE };
 
-  await prisma.emailAccountConnection.updateMany({
+  await prisma.emailAccount.updateMany({
     where,
     data: {
       status: EmailConnectionStatus.REVOKED,
@@ -88,7 +98,7 @@ export async function disconnectEmailConnection(userId: string, provider: EmailP
 }
 
 export async function getDecryptedConnection(connectionId: string) {
-  const connection = await prisma.emailAccountConnection.findUnique({
+  const connection = await prisma.emailAccount.findUnique({
     where: { id: connectionId }
   });
 
@@ -106,7 +116,7 @@ export async function getDecryptedConnection(connectionId: string) {
 }
 
 export async function updateConnectionToken(connectionId: string, accessToken: string, expiresInSeconds?: number) {
-  return prisma.emailAccountConnection.update({
+  return prisma.emailAccount.update({
     where: { id: connectionId },
     data: {
       encryptedAccessToken: encryptSecret(accessToken),
