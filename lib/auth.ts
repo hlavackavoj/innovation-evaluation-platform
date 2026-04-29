@@ -44,6 +44,24 @@ function resolveRoleFromSources(...sources: unknown[]): UserRole {
   return "VIEWER";
 }
 
+function resolveBootstrapAdminRole(email: string, currentRole: UserRole): UserRole {
+  if (currentRole === "ADMIN") {
+    return currentRole;
+  }
+
+  const configured = process.env.BOOTSTRAP_ADMIN_EMAILS ?? "hlavackavoj@gmail.com";
+  const adminEmails = configured
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (adminEmails.includes(email.toLowerCase())) {
+    return "ADMIN";
+  }
+
+  return currentRole;
+}
+
 export async function getCurrentUser() {
   const { getUser } = getKindeServerSession();
   const kindeUser = await getUser();
@@ -74,7 +92,8 @@ export async function ensureUserInDb() {
 
   const firstName = kindeUser?.given_name?.trim() ?? "";
   const lastName = kindeUser?.family_name?.trim() ?? "";
-  const dbRole = resolveRoleFromSources(kindeRoles, rolesClaim?.value);
+  const mappedRole = resolveRoleFromSources(kindeRoles, rolesClaim?.value);
+  const dbRole = resolveBootstrapAdminRole(email, mappedRole);
   const fallbackName = kindeUser?.email?.split("@")[0] ?? "Kinde User";
   const resolvedName = `${firstName} ${lastName}`.trim() || kindeUser?.username || fallbackName;
 
