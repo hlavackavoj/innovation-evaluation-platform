@@ -80,6 +80,34 @@ enum RecommendationStatus {
   DISMISSED
 }
 
+enum EmailProvider {
+  GMAIL
+  OUTLOOK
+}
+
+enum EmailConnectionStatus {
+  ACTIVE
+  REVOKED
+  ERROR
+}
+
+enum SyncSchedule {
+  DAILY
+  WEEKLY
+}
+
+enum EmailSyncJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum EmailSyncJobTrigger {
+  MANUAL
+  SCHEDULED
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String
@@ -90,6 +118,9 @@ model User {
   ownedProjects Project[] @relation("ProjectOwner")
   activities    Activity[]
   assignedTasks Task[]
+  emailConnections EmailAccountConnection[]
+  syncJobs      EmailSyncJob[]
+  auditLogs     AuditLog[]
 }
 
 model Organization {
@@ -116,6 +147,7 @@ model Contact {
   updatedAt      DateTime         @updatedAt
   organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   projectLinks   ProjectContact[]
+  emailAutomationLinks ProjectEmailAutomationContact[]
 }
 
 model Project {
@@ -143,6 +175,9 @@ model Project {
   tasks             Task[]
   recommendations   Recommendation[]
   documents         ProjectDocument[]
+  emailAutomationSetting ProjectEmailAutomationSetting?
+  emailLinks        ProjectEmailLink[]
+  syncJobs          EmailSyncJob[]
 }
 
 model ProjectContact {
@@ -168,6 +203,7 @@ model Activity {
   project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   sourceTasks   Task[]      @relation("TaskSourceActivity")
+  emailMessage  EmailMessage? @relation(fields: [emailMessageId], references: [providerMessageId], onDelete: SetNull)
 }
 
 model Task {
@@ -226,4 +262,156 @@ model ProjectDocument {
 
   @@index([projectId, createdAt])
   @@index([templateId])
+}
+
+model EmailAccountConnection {
+  id                    String                 @id @default(cuid())
+  userId                 String
+  provider               EmailProvider
+  emailAddress           String?
+  externalAccountId      String
+  encryptedAccessToken   String
+  encryptedRefreshToken  String?
+  tokenExpiresAt         DateTime?
+  scopes                 String[]
+  status                 EmailConnectionStatus @default(ACTIVE)
+  lastSyncedAt           DateTime?
+  lastError              String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  user                   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages               EmailMessage[]
+  syncCursors            EmailSyncCursor[]
+  syncJobs               EmailSyncJob[]
+
+  @@unique([provider, externalAccountId])
+  @@index([userId, status])
+}
+
+model EmailMessage {
+  id                      String                 @id @default(cuid())
+  accountConnectionId     String
+  provider                EmailProvider
+  providerMessageId       String                 @unique
+  providerThreadId        String?
+  providerParentMessageId String?
+  internetMessageId       String?
+  subject                 String?
+  direction               String?
+  participants            Json
+  sentAt                  DateTime
+  snippet                 String?
+  bodyText                String?
+  bodyHash                String?
+  hasBody                 Boolean                @default(false)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  accountConnection       EmailAccountConnection @relation(fields: [accountConnectionId], references: [id], onDelete: Cascade)
+  projectLinks            ProjectEmailLink[]
+  syncJobs                EmailSyncJob[]         @relation("EmailMessagesInJob")
+  activities              Activity[]
+
+  @@index([accountConnectionId, sentAt])
+  @@index([providerThreadId])
+}
+
+model ProjectEmailLink {
+  id             String       @id @default(cuid())
+  projectId      String
+  emailMessageId String
+  confidence     Float
+  reason         String
+  createdAt      DateTime     @default(now())
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  emailMessage   EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, emailMessageId])
+}
+
+model EmailSyncCursor {
+  id                  String                 @id @default(cuid())
+  accountConnectionId String
+  cursorKey           String
+  cursorValue         String
+  updatedAt           DateTime               @updatedAt
+  accountConnection   EmailAccountConnection @relation(fields: [accountConnectionId], references: [id], onDelete: Cascade)
+
+  @@unique([accountConnectionId, cursorKey])
+}
+
+model EmailSyncJob {
+  id                  String                  @id @default(cuid())
+  userId              String
+  projectId           String?
+  accountConnectionId String?
+  trigger             EmailSyncJobTrigger
+  status              EmailSyncJobStatus      @default(QUEUED)
+  filterProvider      EmailProvider?
+  filterDirection     String?
+  filterFrom          DateTime?
+  filterTo            DateTime?
+  filterContactEmail  String?
+  importedEmails      Int                     @default(0)
+  matchedContacts     Int                     @default(0)
+  suggestedContacts   Int                     @default(0)
+  generatedTasks      Int                     @default(0)
+  summary             Json?
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  error               String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project             Project?                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  accountConnection   EmailAccountConnection? @relation(fields: [accountConnectionId], references: [id], onDelete: SetNull)
+  importedMessages    EmailMessage[]          @relation("EmailMessagesInJob")
+
+  @@index([userId, createdAt])
+  @@index([projectId, status])
+}
+
+model ProjectEmailAutomationSetting {
+  id             String      @id @default(cuid())
+  projectId      String      @unique
+  enabled        Boolean     @default(false)
+  schedule       SyncSchedule?
+  keywordAliases String[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  project        Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contacts       ProjectEmailAutomationContact[]
+  domains        ProjectEmailAutomationDomain[]
+}
+
+model ProjectEmailAutomationContact {
+  settingId String
+  contactId String
+  createdAt DateTime                      @default(now())
+  setting   ProjectEmailAutomationSetting @relation(fields: [settingId], references: [id], onDelete: Cascade)
+  contact   Contact                       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([settingId, contactId])
+}
+
+model ProjectEmailAutomationDomain {
+  id        String                        @id @default(cuid())
+  settingId String
+  domain    String
+  createdAt DateTime                      @default(now())
+  setting   ProjectEmailAutomationSetting @relation(fields: [settingId], references: [id], onDelete: Cascade)
+
+  @@unique([settingId, domain])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
 }

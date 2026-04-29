@@ -33,6 +33,7 @@ import {
   addProjectDocumentAction,
   createProjectActivityAction,
   convertRecommendationToTaskAction,
+  updateProjectEmailAutomationSettingsAction,
   updateProjectStageAction
 } from "@/app/projects/actions";
 import { activityTypeOptions } from "@/lib/constants";
@@ -69,6 +70,7 @@ export default async function ProjectDetailPage({
   const convertRecommendation = convertRecommendationToTaskAction.bind(null, project.id);
   const addProjectDocument = addProjectDocumentAction.bind(null, project.id);
   const createActivity = createProjectActivityAction.bind(null, project.id);
+  const updateEmailAutomation = updateProjectEmailAutomationSettingsAction.bind(null, project.id);
   const primaryContact = project.contacts[0]?.contact;
   const pipelineProgress = ((pipelineStages.indexOf(project.stage) + 1) / pipelineStages.length) * 100;
   const scoringProgress = potentialProgress[project.potentialLevel];
@@ -356,6 +358,20 @@ export default async function ProjectDetailPage({
                       )}
 
                       <ProjectCommunicationTree activities={project.activities} tasks={project.tasks} />
+
+                      {project.emailLinks.length > 0 && (
+                        <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-4">
+                          <p className="text-sm font-semibold text-zinc-900">Imported email matches</p>
+                          {project.emailLinks.slice(0, 8).map((link) => (
+                            <div key={link.id} className="rounded-lg border border-zinc-100 p-2">
+                              <p className="text-xs font-medium text-zinc-800">{link.emailMessage.subject || "(no subject)"}</p>
+                              <p className="text-xs text-zinc-500">
+                                {formatDate(link.emailMessage.sentAt)} · {link.reason} · confidence {Math.round(link.confidence * 100)}%
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </>
@@ -494,6 +510,74 @@ export default async function ProjectDetailPage({
                       </button>
                     </form>
                   ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Email Automation</CardTitle>
+                  <CardDescription>Analyze synced communication and attach it to this timeline.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form action={updateEmailAutomation} className="space-y-3">
+                    <label className="flex items-center gap-2 text-sm text-zinc-700">
+                      <input
+                        type="checkbox"
+                        name="enabled"
+                        defaultChecked={project.emailAutomationSetting?.enabled ?? false}
+                      />
+                      Analyze my communication for this project
+                    </label>
+                    <label className="block text-xs text-zinc-500">
+                      Schedule
+                      <select
+                        name="schedule"
+                        defaultValue={project.emailAutomationSetting?.schedule ?? ""}
+                        className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-2 text-sm text-zinc-700"
+                      >
+                        <option value="">No schedule</option>
+                        <option value="DAILY">Daily</option>
+                        <option value="WEEKLY">Weekly</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs text-zinc-500">
+                      Keyword aliases (comma-separated)
+                      <input
+                        name="keywordAliases"
+                        defaultValue={(project.emailAutomationSetting?.keywordAliases ?? []).join(", ")}
+                        className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-2 text-sm text-zinc-700"
+                        placeholder="project alias, codename"
+                      />
+                    </label>
+                    <label className="block text-xs text-zinc-500">
+                      Organization domains (comma-separated)
+                      <input
+                        name="domains"
+                        defaultValue={(project.emailAutomationSetting?.domains ?? []).map((item) => item.domain).join(", ")}
+                        className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-2 text-sm text-zinc-700"
+                        placeholder="example.edu, partner.com"
+                      />
+                    </label>
+                    <div className="space-y-2">
+                      <p className="text-xs text-zinc-500">Linked contacts for exact matching</p>
+                      <div className="max-h-40 space-y-1 overflow-auto rounded-lg border border-zinc-100 p-2">
+                        {project.contacts.map(({ contact }) => {
+                          const checked = project.emailAutomationSetting?.contacts.some(
+                            (item) => item.contactId === contact.id
+                          );
+                          return (
+                            <label key={contact.id} className="flex items-center gap-2 text-xs text-zinc-700">
+                              <input type="checkbox" name="contactIds" value={contact.id} defaultChecked={checked} />
+                              {contact.name} {contact.email ? `(${contact.email})` : ""}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <Button type="submit" size="sm">
+                      Save automation
+                    </Button>
+                  </form>
                 </CardContent>
               </Card>
 
