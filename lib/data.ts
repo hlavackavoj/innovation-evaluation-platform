@@ -130,6 +130,25 @@ export async function getProjectById(projectId: string) {
       },
       recommendations: {
         orderBy: [{ createdAt: "asc" }]
+      },
+      emailAutomationSetting: {
+        include: {
+          contacts: {
+            include: {
+              contact: true
+            }
+          },
+          domains: true
+        }
+      },
+      emailLinks: {
+        include: {
+          emailMessage: true
+        },
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 25
       }
     }
   });
@@ -179,6 +198,25 @@ export async function getProjectById(projectId: string) {
           status: RecommendationStatus.PENDING
         },
         orderBy: [{ createdAt: "asc" }]
+      },
+      emailAutomationSetting: {
+        include: {
+          contacts: {
+            include: {
+              contact: true
+            }
+          },
+          domains: true
+        }
+      },
+      emailLinks: {
+        include: {
+          emailMessage: true
+        },
+        orderBy: {
+          createdAt: "desc"
+        },
+        take: 25
       }
     }
   });

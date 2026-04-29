@@ -492,3 +492,70 @@ export async function processCommunicationAction(projectId: string, formData: Fo
   revalidatePath(`/projects/${projectId}`);
   redirect(`/projects/${projectId}?toast=activity-added&importedMessages=${importedMessages}&importedTasks=${importedTasks}`);
 }
+
+export async function updateProjectEmailAutomationSettingsAction(projectId: string, formData: FormData) {
+  await requireProjectAccess(projectId, { write: true });
+
+  const enabled = formData.get("enabled") === "on";
+  const scheduleRaw = formData.get("schedule")?.toString().trim();
+  const schedule = scheduleRaw === "DAILY" || scheduleRaw === "WEEKLY" ? scheduleRaw : null;
+  const aliases = formData
+    .get("keywordAliases")
+    ?.toString()
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean) ?? [];
+  const domains = formData
+    .get("domains")
+    ?.toString()
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean) ?? [];
+  const selectedContactIds = formData
+    .getAll("contactIds")
+    .map((value) => value.toString().trim())
+    .filter(Boolean);
+
+  const setting = await prisma.projectEmailAutomationSetting.upsert({
+    where: { projectId },
+    create: {
+      projectId,
+      enabled,
+      schedule,
+      keywordAliases: aliases
+    },
+    update: {
+      enabled,
+      schedule,
+      keywordAliases: aliases
+    }
+  });
+
+  await prisma.$transaction([
+    prisma.projectEmailAutomationContact.deleteMany({
+      where: { settingId: setting.id }
+    }),
+    prisma.projectEmailAutomationDomain.deleteMany({
+      where: { settingId: setting.id }
+    }),
+    ...(selectedContactIds.length > 0
+      ? [
+          prisma.projectEmailAutomationContact.createMany({
+            data: selectedContactIds.map((contactId) => ({ settingId: setting.id, contactId })),
+            skipDuplicates: true
+          })
+        ]
+      : []),
+    ...(domains.length > 0
+      ? [
+          prisma.projectEmailAutomationDomain.createMany({
+            data: domains.map((domain) => ({ settingId: setting.id, domain })),
+            skipDuplicates: true
+          })
+        ]
+      : [])
+  ]);
+
+  revalidatePath(`/projects/${projectId}`);
+  redirect(`/projects/${projectId}?toast=activity-added`);
+}
