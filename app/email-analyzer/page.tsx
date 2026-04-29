@@ -3,7 +3,7 @@ import { Shell } from "@/components/shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
-import { buildAccessibleProjectWhere, canAccessAllProjects, requireCurrentUser } from "@/lib/authorization";
+import { requireCurrentUser } from "@/lib/authorization";
 import { getCurrentUserEmailConnections } from "@/lib/email/connections";
 import { analyzeCommunicationAction, disconnectConnectionAction } from "@/app/email-analyzer/actions";
 
@@ -23,15 +23,6 @@ export default async function EmailAnalyzerPage({
       select: { id: true, title: true }
     }),
     prisma.contact.findMany({
-      where: canAccessAllProjects(user)
-        ? undefined
-        : {
-            projectLinks: {
-              some: {
-                project: buildAccessibleProjectWhere(user)
-              }
-            }
-          },
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true }
     }),
@@ -76,7 +67,7 @@ export default async function EmailAnalyzerPage({
                 <span className="text-xs font-medium text-zinc-500">Project (optional)</span>
                 <select name="projectId" className="w-full rounded-lg border border-zinc-200 p-2 text-sm">
                   <option value="">All projects</option>
-                  {projects.map((project: { id: string; title: string }) => (
+                  {projects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.title}
                     </option>
@@ -94,8 +85,8 @@ export default async function EmailAnalyzerPage({
                 />
                 <datalist id="contact-emails">
                   {contacts
-                    .filter((c: { email: string | null }) => !!c.email)
-                    .map((contact: { id: string; name: string; email: string | null }) => (
+                    .filter((c) => !!c.email)
+                    .map((contact) => (
                       <option key={contact.id} value={contact.email || ""}>
                         {contact.name}
                       </option>
@@ -159,12 +150,7 @@ export default async function EmailAnalyzerPage({
               </p>
             )}
 
-            {connections.map((connection: {
-              id: string;
-              provider: string;
-              emailAddress: string | null;
-              status: string;
-            }) => (
+            {connections.map((connection) => (
               <div key={connection.id} className="rounded-lg border border-zinc-200 p-3">
                 <p className="text-sm font-medium text-zinc-900">{connection.provider}</p>
                 <p className="text-xs text-zinc-500">{connection.emailAddress || "No mailbox detected"}</p>
