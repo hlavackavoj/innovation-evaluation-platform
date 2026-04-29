@@ -43,6 +43,8 @@ export async function ensureUserInDb() {
       role: mappedRole
     },
     select: {
+      id: true,
+      email: true,
       name: true,
       role: true
     }
