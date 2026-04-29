@@ -5,6 +5,12 @@ import { hasProjectsAccessByKindeRole } from "@/lib/kinde-roles";
 export default withAuth((req: any) => {
   const roleClaim = req.kindeAuth?.token?.roles ?? req.kindeAuth?.token?.["x-hasura-roles"];
 
+  // Some Kinde setups do not emit roles in token claims.
+  // In that case, defer authorization to server-side DB-backed checks.
+  if (!roleClaim) {
+    return NextResponse.next();
+  }
+
   if (hasProjectsAccessByKindeRole(roleClaim)) {
     return NextResponse.next();
   }
