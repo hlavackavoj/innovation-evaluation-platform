@@ -38,10 +38,21 @@ export default async function EmailAnalyzerPage({
     getCurrentUserEmailConnections()
   ]);
 
-  const imported = Number(searchParams?.imported || 0);
-  const matched = Number(searchParams?.matched || 0);
-  const suggested = Number(searchParams?.suggested || 0);
-  const generated = Number(searchParams?.generated || 0);
+  const readFirst = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
+  const readNumber = (value: string | string[] | undefined) => {
+    const raw = readFirst(value);
+    if (!raw) return 0;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const imported = readNumber(searchParams?.imported);
+  const matched = readNumber(searchParams?.matched);
+  const suggested = readNumber(searchParams?.suggested);
+  const generated = readNumber(searchParams?.generated);
+  const jobId = readFirst(searchParams?.jobId);
+  const toast = readFirst(searchParams?.toast);
+  const error = readFirst(searchParams?.error);
 
   return (
     <Shell
@@ -65,6 +76,24 @@ export default async function EmailAnalyzerPage({
             <CardDescription>Filter emails and run provider-agnostic communication analysis.</CardDescription>
           </CardHeader>
           <CardContent>
+            {toast === "provider-connected" && (
+              <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                Gmail account connected successfully.
+              </div>
+            )}
+
+            {error && (
+              <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                {error === "oauth_provider_error" && "OAuth provider returned an error during authorization."}
+                {error === "missing_oauth_code" && "OAuth callback is missing authorization code/state."}
+                {error === "oauth_callback_failed" && "OAuth callback failed. Try reconnecting Gmail."}
+                {error === "provider_disabled" && "This provider is currently disabled."}
+                {!["oauth_provider_error", "missing_oauth_code", "oauth_callback_failed", "provider_disabled"].includes(
+                  error
+                ) && "Unknown error. Check server logs for details."}
+              </div>
+            )}
+
             <form action={analyzeCommunicationAction} className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-1">
                 <span className="text-xs font-medium text-zinc-500">Project (optional)</span>
@@ -129,12 +158,17 @@ export default async function EmailAnalyzerPage({
               </div>
             </form>
 
-            {(imported > 0 || generated > 0) && (
+            {jobId && (
               <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
                 <p>Imported emails: <strong>{imported}</strong></p>
                 <p>Matched contacts: <strong>{matched}</strong></p>
                 <p>Suggested new contacts: <strong>{suggested}</strong></p>
                 <p>Generated tasks: <strong>{generated}</strong></p>
+                {imported === 0 && (
+                  <p className="mt-2 text-zinc-600">
+                    No emails matched the current filters. Try removing contact filter or widening date range.
+                  </p>
+                )}
               </div>
             )}
           </CardContent>
