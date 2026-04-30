@@ -3,6 +3,21 @@ import { handleOAuthCallback } from "@/lib/email/oauth-service";
 import { providerFromRoute } from "@/lib/email/provider-config";
 import { runPostConnectInitialSync } from "@/lib/email/post-connect-sync";
 
+function resolveOAuthErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+  if (message.includes("oauth state expired")) return "oauth_state_expired";
+  if (message.includes("state signature")) return "oauth_state_invalid";
+  if (message.includes("provider mismatch")) return "oauth_provider_mismatch";
+  if (message.includes("redirect_uri_mismatch")) return "oauth_redirect_uri_mismatch";
+  if (message.includes("invalid_grant")) return "oauth_invalid_grant";
+  if (message.includes("did not return access token")) return "oauth_missing_access_token";
+  if (message.includes("token exchange")) return "oauth_token_exchange_failed";
+  if (message.includes("gmail profile")) return "oauth_profile_fetch_failed";
+
+  return "oauth_callback_failed";
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { provider: string } }
@@ -45,8 +60,9 @@ export async function GET(
     return NextResponse.redirect(redirectUrl);
   } catch (err) {
     console.error("OAUTH_CALLBACK_FAILED", err);
+    const errorCode = resolveOAuthErrorCode(err);
     return NextResponse.redirect(
-      new URL("/email-analyzer?error=oauth_callback_failed", request.url)
+      new URL(`/email-analyzer?error=${errorCode}`, request.url)
     );
   }
 }

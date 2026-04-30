@@ -80,8 +80,29 @@ export default async function EmailAnalyzerPage({
                 {error === "oauth_provider_error" && "OAuth provider returned an error during authorization."}
                 {error === "missing_oauth_code" && "OAuth callback is missing authorization code/state."}
                 {error === "oauth_callback_failed" && "OAuth callback failed. Try reconnecting Gmail."}
+                {error === "oauth_state_expired" && "OAuth session expired. Retry and finish Google consent within 10 minutes."}
+                {error === "oauth_state_invalid" && "OAuth state validation failed (possible stale tab or invalid signature)."}
+                {error === "oauth_provider_mismatch" && "OAuth provider mismatch in callback state."}
+                {error === "oauth_redirect_uri_mismatch" && "Google OAuth redirect URI mismatch. Check Google Console redirect URL."}
+                {error === "oauth_invalid_grant" && "Authorization code is invalid or already used. Retry Gmail connect."}
+                {error === "oauth_missing_access_token" && "Token response did not include access token."}
+                {error === "oauth_token_exchange_failed" && "Token exchange with provider failed."}
+                {error === "oauth_profile_fetch_failed" && "Connected, but failed to fetch Gmail profile."}
                 {error === "provider_disabled" && "This provider is currently disabled."}
-                {!["oauth_provider_error", "missing_oauth_code", "oauth_callback_failed", "provider_disabled"].includes(
+                {![
+                  "oauth_provider_error",
+                  "missing_oauth_code",
+                  "oauth_callback_failed",
+                  "oauth_state_expired",
+                  "oauth_state_invalid",
+                  "oauth_provider_mismatch",
+                  "oauth_redirect_uri_mismatch",
+                  "oauth_invalid_grant",
+                  "oauth_missing_access_token",
+                  "oauth_token_exchange_failed",
+                  "oauth_profile_fetch_failed",
+                  "provider_disabled"
+                ].includes(
                   error
                 ) && "Unknown error. Check server logs for details."}
               </div>
