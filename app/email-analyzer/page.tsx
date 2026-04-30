@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Shell } from "@/components/shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
-import { requireCurrentUser } from "@/lib/authorization";
+import { AuthorizationError, requireCurrentUser } from "@/lib/authorization";
 import { getCurrentUserEmailConnections } from "@/lib/email/connections";
 import { analyzeCommunicationAction, disconnectConnectionAction } from "@/app/email-analyzer/actions";
 
@@ -12,7 +13,15 @@ export default async function EmailAnalyzerPage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const user = await requireCurrentUser();
+  let user;
+  try {
+    user = await requireCurrentUser();
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      redirect("/login");
+    }
+    throw error;
+  }
 
   const [projects, contacts, connections] = await Promise.all([
     prisma.project.findMany({
@@ -37,7 +46,7 @@ export default async function EmailAnalyzerPage({
   return (
     <Shell
       title="Email Analyzer"
-      description="Import Gmail and Outlook communication, match to CRM projects, and generate tasks."
+      description="Import Gmail communication, match to CRM projects, and generate tasks."
       actions={
         <div className="flex gap-2">
           <Link
@@ -45,12 +54,6 @@ export default async function EmailAnalyzerPage({
             className={buttonVariants({ variant: "outline" })}
           >
             Connect Gmail
-          </Link>
-          <Link
-            href="/api/email/oauth/outlook/connect?returnPath=/email-analyzer"
-            className={buttonVariants({ variant: "outline" })}
-          >
-            Connect Outlook
           </Link>
         </div>
       }
@@ -109,7 +112,6 @@ export default async function EmailAnalyzerPage({
                 <select name="provider" className="w-full rounded-lg border border-zinc-200 p-2 text-sm">
                   <option value="ALL">All</option>
                   <option value="GMAIL">Gmail</option>
-                  <option value="OUTLOOK">Outlook</option>
                 </select>
               </label>
 
@@ -141,7 +143,7 @@ export default async function EmailAnalyzerPage({
         <Card>
           <CardHeader>
             <CardTitle>Connected Providers</CardTitle>
-            <CardDescription>Least-privilege read access for Gmail and Microsoft 365 mailboxes.</CardDescription>
+            <CardDescription>Least-privilege read access for Gmail mailboxes.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {connections.length === 0 && (

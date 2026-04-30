@@ -6,13 +6,17 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { provider: string } }
 ) {
+  if (params.provider.toLowerCase() !== "gmail") {
+    return NextResponse.redirect(new URL("/email-analyzer?error=provider_disabled", request.url));
+  }
+
   const provider = providerFromRoute(params.provider);
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const error = request.nextUrl.searchParams.get("error");
 
   if (error) {
-    return NextResponse.redirect(new URL(`/email-analyzer?error=${encodeURIComponent(error)}`, request.url));
+    return NextResponse.redirect(new URL("/email-analyzer?error=oauth_provider_error", request.url));
   }
 
   if (!code || !state) {
@@ -28,9 +32,9 @@ export async function GET(
 
     return NextResponse.redirect(`${redirectTarget}?toast=provider-connected`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "oauth_callback_failed";
+    console.error("OAUTH_CALLBACK_FAILED", err);
     return NextResponse.redirect(
-      new URL(`/email-analyzer?error=${encodeURIComponent(message)}`, request.url)
+      new URL("/email-analyzer?error=oauth_callback_failed", request.url)
     );
   }
 }

@@ -7,6 +7,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { provider: string } }
 ) {
+  if (params.provider.toLowerCase() !== "gmail") {
+    return NextResponse.redirect(new URL("/email-analyzer?error=provider_disabled", request.url));
+  }
+
   const user = await requireCurrentUser();
   const provider = providerFromRoute(params.provider);
   const returnPath = request.nextUrl.searchParams.get("returnPath") ?? "/email-analyzer";
