@@ -23,7 +23,8 @@ Aktualizováno: duben 2026.
 - [[02_CRM/Activities]] – Záznamy práce, e-mailové aktivity
 - [[02_CRM/Tasks]] – Úkoly, automatické generování z AI
 - [[02_CRM/Users]] – Role, Kinde Auth, oprávnění
-- [[02_CRM/Email Analyzer]] – ⭐ Nová funkce: Gmail/Outlook sync + AI analýza
+- [[02_CRM/Email Analyzer]] – ⭐ Gmail/Outlook sync + AI analýza (produktový přehled)
+- [[02_CRM/Email Analyzer Flow]] – ⭐ Detailní technický flow s Mermaid diagramy
 
 ### Pipeline
 - [[03_Pipeline/Pipeline Stages]] – 5 fází: DISCOVERY → SPIN_OFF
@@ -33,12 +34,13 @@ Aktualizováno: duben 2026.
 
 ### Recommendation Engine
 - [[05_Recommendation_Engine/Recommendation Engine Overview]] – Jak engine funguje
+- [[05_Recommendation_Engine/Recommendation Engine Map]] – ⭐ Detailní technická mapa: pravidla, sync flow, konverze na task, Mermaid diagramy
 - [[05_Recommendation_Engine/Rules]] – Kompletní seznam pravidel s ruleKey
 - [[05_Recommendation_Engine/Playbooks]] – Životní cyklus doporučení
 - [[05_Recommendation_Engine/Recommended Roles]] – Role doporučované enginem
 
 ### Data Model
-- [[06_Data_Model/Data Model]] – Kompletní schéma z Prisma (všechny modely a enumy)
+- [[06_Data_Model/Data Model]] – Kompletní schéma z Prisma (všechny modely, enumy, ER diagram)
 
 ### API Design
 - [[07_API_Design/API Design]] – Server Actions vs. API Routes
@@ -54,4 +56,9 @@ Aktualizováno: duben 2026.
 
 ### Implementace
 - [[11_Implementation/Implementation Plan]] – Fáze, co je hotovo vs. co chybí
+- [[11_Implementation/Local Development & DB Reset]] – ⭐ Lokální dev setup, DB reset postup, troubleshooting migrace
+- [[11_Implementation/Open Questions & Next Steps]] – ⭐ Prioritizovaný seznam next steps, tech debt, open questions
 - [[99_Notes/Next Steps]] – Technický dluh a prioritizace
+
+### System Memory
+- [[12_System_Memory/System Memory Map]] – Centrální technická mapa: architektura, flow, datové vazby a coupling body (s Mermaid diagramy)

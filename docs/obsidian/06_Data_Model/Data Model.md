@@ -123,3 +123,140 @@ Zdrojová pravda: `prisma/schema.prisma`. Tento dokument je aktuální k dubnu 2
 ## Neimplementováno
 
 Model `Expert` z původního plánu **neexistuje** v schématu.
+
+---
+
+## ER diagram (hlavní entity)
+
+```mermaid
+erDiagram
+  User {
+    string id PK
+    string name
+    string email UK
+    UserRole role
+  }
+  Organization {
+    string id PK
+    string name
+    OrganizationType type
+    string website
+  }
+  Contact {
+    string id PK
+    string name
+    string email
+    string role
+    string organizationId FK
+  }
+  Project {
+    string id PK
+    string title
+    PipelineStage stage
+    ProjectPriority priority
+    ProjectPotentialLevel potentialLevel
+    string ownerUserId FK
+    string organizationId FK
+  }
+  ProjectContact {
+    string projectId FK
+    string contactId FK
+  }
+  Activity {
+    string id PK
+    string projectId FK
+    string userId FK
+    ActivityType type
+    string note
+    string emailMessageId FK
+    json aiAnalysis
+    datetime activityDate
+  }
+  Task {
+    string id PK
+    string projectId FK
+    string contactId FK
+    string assignedToUserId FK
+    string sourceActivityId FK
+    TaskStatus status
+    ProjectPriority priority
+  }
+  Recommendation {
+    string id PK
+    string projectId FK
+    string ruleKey
+    RecommendationStatus status
+    string suggestedRole
+  }
+  Template {
+    string id PK
+    PipelineStage targetStage
+    string storagePath
+  }
+  ProjectDocument {
+    string id PK
+    string projectId FK
+    string templateId FK
+    string storagePath
+  }
+  EmailAccountConnection {
+    string id PK
+    string userId FK
+    EmailProvider provider
+    string externalAccountId UK
+    string encryptedAccessToken
+    EmailConnectionStatus status
+  }
+  EmailMessage {
+    string id PK
+    string accountConnectionId FK
+    string providerMessageId UK
+    json participants
+    datetime sentAt
+  }
+  ProjectEmailLink {
+    string id PK
+    string projectId FK
+    string emailMessageId FK
+    float confidence
+    string reason
+  }
+  EmailSyncJob {
+    string id PK
+    string userId FK
+    string projectId FK
+    string accountConnectionId FK
+    EmailSyncJobStatus status
+    EmailSyncJobTrigger trigger
+  }
+  AuditLog {
+    string id PK
+    string userId FK
+    string action
+    string entityType
+    string entityId
+    json metadata
+  }
+
+  User ||--o{ Project : owns
+  User ||--o{ Activity : records
+  User ||--o{ Task : "assigned to"
+  User ||--o{ EmailAccountConnection : has
+  User ||--o{ EmailSyncJob : runs
+  User ||--o{ AuditLog : creates
+  Organization ||--o{ Project : "linked to"
+  Organization ||--o{ Contact : has
+  Contact ||--o{ ProjectContact : "linked via"
+  Project ||--o{ ProjectContact : "linked via"
+  Project ||--o{ Activity : has
+  Project ||--o{ Task : has
+  Project ||--o{ Recommendation : has
+  Project ||--o{ ProjectDocument : has
+  Project ||--o{ ProjectEmailLink : has
+  Project ||--o{ EmailSyncJob : "triggered for"
+  Task }o--|| Activity : "source activity"
+  Activity }o--|| EmailMessage : "from email"
+  EmailAccountConnection ||--o{ EmailMessage : contains
+  EmailMessage ||--o{ ProjectEmailLink : "linked to project"
+  Template ||--o{ ProjectDocument : "used in"
+```
