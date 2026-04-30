@@ -1,20 +1,49 @@
 # UI UX
 
-## Hlavní obrazovky
+## Implementované stránky a komponenty
 
-1. Dashboard
-2. Projects list
-3. Project detail
-4. Contacts
-5. Organizations
-6. Tasks
-7. Activities
-8. Settings
+### Pages
+
+| Route | Komponenta | Popis |
+|---|---|---|
+| `/` | `app/page.tsx` | Dashboard |
+| `/login` | `app/login/page.tsx` | Přihlašovací stránka |
+| `/projects` | `app/projects/page.tsx` | Seznam projektů |
+| `/projects/new` | `app/projects/new/page.tsx` | Nový projekt |
+| `/projects/[id]` | `app/projects/[id]/page.tsx` | Detail projektu |
+| `/projects/[id]/edit` | `app/projects/[id]/edit/page.tsx` | Editace projektu |
+| `/contacts` | `app/contacts/page.tsx` | Kontakty |
+| `/organizations` | `app/organizations/page.tsx` | Organizace |
+| `/tasks` | `app/tasks/page.tsx` | Úkoly |
+| `/templates` | `app/templates/page.tsx` | Šablony dokumentů |
+| `/email-analyzer` | `app/email-analyzer/page.tsx` | Email Analyzer |
+
+### Komponenty
+
+| Soubor | Popis |
+|---|---|
+| `components/shell.tsx` | Layout shell |
+| `components/navigation.tsx` | Boční navigace |
+| `components/pipeline-stepper.tsx` | Vizualizace pipeline fáze |
+| `components/recommendation-panel.tsx` | Karty doporučení |
+| `components/status-badge.tsx` | Badge pro stav/fázi |
+| `components/feedback-toast.tsx` | Toast notifikace |
+| `components/project-form.tsx` | Formulář projektu |
+| `components/contact-form.tsx` | Formulář kontaktu |
+| `components/organization-form.tsx` | Formulář organizace |
+| `components/project-document-upload-form.tsx` | Upload dokumentu |
+| `components/EmailImportForm.tsx` | Formulář pro import e-mailů |
+| `components/ProjectCanvasView.tsx` | Canvas pohled projektu |
+| `components/ProjectCommunicationTree.tsx` | Strom e-mailové komunikace |
+| `components/dashboard-card.tsx` | Karta dashboardu |
+
+### UI primitives (`components/ui/`)
+
+badge, button, card, progress, table
 
 ## Dashboard
 
-Dashboard má ukazovat:
-
+Dashboard zobrazuje přehled projektové pipeline:
 - počet aktivních projektů,
 - projekty podle fáze,
 - projekty bez dalšího kroku,
@@ -22,48 +51,30 @@ Dashboard má ukazovat:
 - projekty s vysokým potenciálem,
 - projekty bez kontaktu déle než 30 dní.
 
-## Projects list
-
-Seznam projektů má umožnit:
-
-- vyhledávání,
-- filtrování podle fáze,
-- filtrování podle potenciálu,
-- filtrování podle odpovědné osoby,
-- řazení podle posledního kontaktu,
-- rychlé zobrazení dalšího kroku.
-
 ## Project detail
 
 Detail projektu obsahuje:
-
-- základní informace,
-- pipeline stage,
-- potenciál,
-- prioritu,
-- odpovědnou osobu,
-- další krok,
-- doporučené kroky,
-- doporučené role pomoci,
-- úkoly,
+- základní informace (stage, priority, potential, IP, team strength, business readiness),
+- pipeline stepper,
+- next step a deadline,
+- doporučení (RecommendationPanel),
 - aktivity,
-- kontakty.
+- úkoly,
+- kontakty,
+- dokumenty,
+- email automation nastavení.
 
-## Recommendation UI
+## Email Analyzer
 
-Doporučení by měla být zobrazena jako karty.
-
-Každá karta má:
-
-- název doporučení,
-- vysvětlení,
-- prioritu,
-- doporučenou roli,
-- tlačítko vytvořit úkol.
+Stránka `/email-analyzer` umožňuje:
+- připojit Gmail / Outlook přes OAuth,
+- filtrovat e-maily (projekt, provider, směr, datum, kontakt),
+- spustit AI analýzu,
+- zobrazit výsledky (importované e-maily, aktivity, vygenerované úkoly).
 
 ## UX principy
 
-- žádná složitost v první verzi,
-- detail projektu musí být hlavní pracovní plocha,
-- doporučení musí být akční,
-- CRM nesmí být jen databáze, ale nástroj pro řízení dalšího kroku.
+- Detail projektu je hlavní pracovní plocha.
+- Doporučení jsou akční – lze je označit jako hotová.
+- CRM není jen databáze, ale nástroj pro řízení dalšího kroku.
+- E-maily se automaticky propojují s projekty a generují aktivity.

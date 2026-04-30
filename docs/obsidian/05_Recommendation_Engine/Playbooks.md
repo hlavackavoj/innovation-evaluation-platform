@@ -1,45 +1,49 @@
 # Playbooks
 
-## Cíl
+## Jak engine funguje
 
-Playbook definuje, co se má doporučit v konkrétní fázi a situaci projektu.
+Každý projekt generuje sadu doporučení kombinací:
+1. **Stage pravidel** – 2 doporučení pevně daná aktuální fází pipeline
+2. **Condition pravidel** – 0–5 dodatečných doporučení podle stavu projektu
 
-## Struktura playbooku
+Playbook = konkrétní kombinace pro daný stav projektu.
 
-- stage
-- conditions
-- recommended_actions
-- recommended_roles
-- explanation
-- priority
+## Příklad: projekt v DISCOVERY, chybí IP, slabý tým
 
-## Příklad playbooku
+Vygenerovaná doporučení:
+- `stage:discovery:market-size` → Perform market size analysis (Industry expert)
+- `stage:discovery:target-audience` → Identify primary target audience (Startup mentor)
+- `condition:missing-ip-status` → Clarify IP status (IP lawyer)
+- `condition:business-capability-gap` → Strengthen business capability (Business mentor)
 
-```yaml
-stage: Evaluation
-conditions:
-  ip_status: missing
-recommended_actions:
-  - Ověřit IP status projektu
-  - Zjistit, kdo vlastní výsledky výzkumu
-  - Konzultovat patentovatelnost
-recommended_roles:
-  - IP právník
-  - Technology transfer officer
-priority: high
-explanation: Bez vyřešeného IP nelze bezpečně pokračovat ke spin-offu.
+## Příklad: projekt v SCALING, HIGH potenciál, bez nextStep
+
+Vygenerovaná doporučení:
+- `stage:scaling:business-development` → Build partnership pipeline (Business Developer)
+- `stage:scaling:investor-readiness` → Prepare investor readiness materials (Investor)
+- `condition:missing-next-step` → Define the next milestone (Project manager)
+
+## Životní cyklus doporučení
+
+```
+[vytvoření projektu / aktualizace]
+    ↓
+syncProjectRecommendations()
+    ↓
+PENDING → doporučení je aktivní, čeká na akci
+    ↓ (uživatel označí jako hotové)
+COMPLETED → již se nepřepisuje
+    ↓ (podmínka přestala platit, ale nebylo dokončeno)
+DISMISSED → tiché zavření
 ```
 
 ## Typy doporučení
 
 ### Akční doporučení
-
-Konkrétní krok, který má tým udělat.
+Konkrétní krok, který má tým nebo inovační centrum udělat (analýza trhu, rozhovory, scoring, …).
 
 ### Role doporučení
+Typ experta nebo interního pracovníka, který může projektu pomoci.
 
-Typ člověka nebo experta, který může pomoci.
-
-### Interní doporučení
-
-Doporučení pro pracovníky inovačního centra.
+### Stale alert
+Doporučení upozorňující na stagnaci projektu (`condition:stale-contact`, `condition:missing-next-step`).

@@ -1,73 +1,81 @@
 # Implementation Plan
 
-## Fáze 1: CRM MVP
+Aktualizováno: duben 2026.
 
-Cíl: vytvořit první funkční verzi CRM pro evidenci a řízení projektů.
+## Fáze 1: CRM MVP ✅ HOTOVO
 
-### Funkce
-
-- přihlášení,
-- projekty,
-- kontakty,
-- organizace,
-- aktivity,
-- úkoly,
-- pipeline fáze,
+Funkce:
+- přihlášení (Kinde Auth),
+- projekty, kontakty, organizace,
+- aktivity, úkoly,
+- pipeline fáze (5 fází),
 - jednoduchý dashboard.
 
-## Fáze 2: Recommendation Engine MVP
+## Fáze 2: Recommendation Engine MVP ✅ HOTOVO
 
-Cíl: přidat rule-based doporučení dalších kroků a rolí.
-
-### Funkce
-
-- pravidla doporučení,
-- generování doporučení podle projektu,
+Funkce:
+- 10 pravidel (2 per fáze + 5 condition pravidel),
+- generování a sync doporučení do DB,
 - doporučené role,
-- vytvoření úkolu z doporučení.
+- PENDING / COMPLETED / DISMISSED status.
 
-## Fáze 3: Scoring
+## Fáze 3: Šablony a dokumenty ✅ HOTOVO
 
-Cíl: přidat základní scoring potenciálu projektu.
+Funkce:
+- Template model napojený na pipeline fáze,
+- upload projektových dokumentů (Supabase Storage),
+- podepsané URL pro stažení.
 
-### Funkce
+## Fáze 4: Email Analyzer v2 ✅ HOTOVO (merged PR #1)
 
-- scoring formulář,
-- výpočet skóre,
-- potential_level,
-- vizualizace skóre na detailu projektu.
+Funkce:
+- OAuth připojení Gmail a Outlook (šifrované tokeny),
+- synchronizace e-mailů z providera,
+- deduplikace zpráv,
+- 3 úrovně párování s projektem (exact email, domain, keyword),
+- AI analýza přes Google Gemini 1.5 Flash,
+- automatické vytváření aktivit a úkolů,
+- email automation nastavení per projekt (schedule, contacts, domains, keywords),
+- AuditLog pro import akce.
 
-## Fáze 4: Experti a matching
+## Fáze 5: Scoring ❌ NEREALIZOVÁNO
 
-Cíl: navrhovat konkrétní experty podle role a oboru.
+Co je potřeba:
+- scoring formulář (5 kritérií × 0–20 bodů),
+- uložení dílčích skóre,
+- výpočet `potentialLevel`,
+- vizualizace na detailu projektu.
 
-### Funkce
+## Fáze 6: Expert matching ❌ NEREALIZOVÁNO
 
+Co je potřeba:
+- model `Expert` v Prisma schématu,
 - databáze expertů,
-- specializace,
-- dostupnost,
-- matching podle oboru a potřeby.
+- matching podle `suggestedRole` a oboru,
+- UI pro přiřazení experta z doporučení.
 
-## Fáze 5: Enterprise bezpečnost
+## Fáze 7: Pokročilá analytika ❌ NEREALIZOVÁNO
 
-Cíl: připravit systém pro reálné nasazení ve větších institucích.
+Co je potřeba:
+- agregační dashboard (funnel, konverze, průměrné doby ve fázi),
+- metriky o e-mailové komunikaci,
+- exporty pro vedení.
 
-### Funkce
+## Fáze 8: Enterprise bezpečnost ❌ NEREALIZOVÁNO
 
-- SSO,
-- audit log,
-- detailní práva,
+Co je potřeba:
+- SSO přes univerzitní login,
+- detailní audit log (všechny CRM akce),
 - multi-tenant architektura,
-- exporty,
-- anonymizace.
+- anonymizovaný režim evaluace.
 
-## Doporučený tech stack
+---
 
-- Next.js
-- TypeScript
-- PostgreSQL
-- Prisma
-- Auth.js
-- Tailwind CSS
-- shadcn/ui
-- Vercel nebo Railway
+## Skutečný tech stack (vs. původní plán)
+
+| Plánováno | Skutečnost |
+|---|---|
+| Auth.js | **Kinde Auth** |
+| shadcn/ui | Vlastní komponenty + Tailwind |
+| Railway | **Vercel** |
+| REST API | **Next.js Server Actions** |

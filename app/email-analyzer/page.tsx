@@ -7,11 +7,33 @@ import { AuthorizationError, requireCurrentUser } from "@/lib/authorization";
 import { getCurrentUserEmailConnections } from "@/lib/email/connections";
 import { analyzeCommunicationAction, disconnectConnectionAction } from "@/app/email-analyzer/actions";
 import { ConnectGmailButton } from "@/components/ConnectGmailButton";
+import { EnrichmentPanel } from "@/app/email-analyzer/enrichment-panel";
+
+function parseSummary(summary: unknown) {
+  if (!summary || typeof summary !== "object") {
+    return null;
+  }
+
+  const data = summary as Record<string, unknown>;
+  const created = (data.createdEntities as Record<string, unknown> | undefined) ?? {};
+
+  return {
+    importedEmails: Number(data.importedEmails ?? 0),
+    matchedContacts: Number(data.matchedContacts ?? 0),
+    suggestedContacts: Number(data.suggestedContacts ?? 0),
+    generatedTasks: Number(data.generatedTasks ?? 0),
+    createdEntities: {
+      contacts: Array.isArray(created.contacts) ? created.contacts : [],
+      tasks: Array.isArray(created.tasks) ? created.tasks : [],
+      organizations: Array.isArray(created.organizations) ? created.organizations : []
+    }
+  };
+}
 
 export default async function EmailAnalyzerPage({
   searchParams
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined>;
 }) {
   let user;
   try {
@@ -39,36 +61,45 @@ export default async function EmailAnalyzerPage({
   ]);
 
   const readFirst = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
-  const readNumber = (value: string | string[] | undefined) => {
-    const raw = readFirst(value);
-    if (!raw) return 0;
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
+  const resolvedSearchParams = await Promise.resolve(searchParams);
+  const jobId = readFirst(resolvedSearchParams?.jobId);
+  const toast = readFirst(resolvedSearchParams?.toast);
+  const error = readFirst(resolvedSearchParams?.error);
 
-  const imported = readNumber(searchParams?.imported);
-  const matched = readNumber(searchParams?.matched);
-  const suggested = readNumber(searchParams?.suggested);
-  const generated = readNumber(searchParams?.generated);
-  const jobId = readFirst(searchParams?.jobId);
-  const toast = readFirst(searchParams?.toast);
-  const error = readFirst(searchParams?.error);
+  const initialJob = jobId
+    ? await prisma.emailSyncJob.findFirst({
+        where: {
+          id: jobId,
+          userId: user.id
+        },
+        select: {
+          summary: true
+        }
+      })
+    : null;
+
+  const initialSummary = parseSummary(initialJob?.summary ?? null);
 
   return (
     <Shell
       title="Email Analyzer"
       description="Import Gmail communication, match to CRM projects, and generate tasks."
-      actions={
-        <ConnectGmailButton returnPath="/email-analyzer" />
-      }
+      actions={<ConnectGmailButton returnPath="/email-analyzer" />}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr,340px]">
+        <EnrichmentPanel
+          projects={projects}
+          contacts={contacts}
+          analyzeAction={analyzeCommunicationAction}
+          initialSummary={initialSummary}
+        />
+
         <Card>
           <CardHeader>
-            <CardTitle>Analyze Communication</CardTitle>
-            <CardDescription>Filter emails and run provider-agnostic communication analysis.</CardDescription>
+            <CardTitle>Connected Providers</CardTitle>
+            <CardDescription>Least-privilege read access for Gmail mailboxes.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             {toast === "provider-connected" && (
               <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
                 Gmail account connected successfully.
@@ -102,98 +133,10 @@ export default async function EmailAnalyzerPage({
                   "oauth_token_exchange_failed",
                   "oauth_profile_fetch_failed",
                   "provider_disabled"
-                ].includes(
-                  error
-                ) && "Unknown error. Check server logs for details."}
+                ].includes(error) && "Unknown error. Check server logs for details."}
               </div>
             )}
 
-            <form action={analyzeCommunicationAction} className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-zinc-500">Project (optional)</span>
-                <select name="projectId" className="w-full rounded-lg border border-zinc-200 p-2 text-sm">
-                  <option value="">All projects</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-zinc-500">Contact email</span>
-                <input
-                  name="contactEmail"
-                  list="contact-emails"
-                  placeholder="name@university.edu"
-                  className="w-full rounded-lg border border-zinc-200 p-2 text-sm"
-                />
-                <datalist id="contact-emails">
-                  {contacts
-                    .filter((c) => !!c.email)
-                    .map((contact) => (
-                      <option key={contact.id} value={contact.email || ""}>
-                        {contact.name}
-                      </option>
-                    ))}
-                </datalist>
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-zinc-500">Date from</span>
-                <input type="date" name="dateFrom" className="w-full rounded-lg border border-zinc-200 p-2 text-sm" />
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-zinc-500">Date to</span>
-                <input type="date" name="dateTo" className="w-full rounded-lg border border-zinc-200 p-2 text-sm" />
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-zinc-500">Provider</span>
-                <select name="provider" className="w-full rounded-lg border border-zinc-200 p-2 text-sm">
-                  <option value="ALL">All</option>
-                  <option value="GMAIL">Gmail</option>
-                </select>
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-zinc-500">Direction</span>
-                <select name="direction" className="w-full rounded-lg border border-zinc-200 p-2 text-sm">
-                  <option value="all">All</option>
-                  <option value="inbound">Inbound</option>
-                  <option value="outbound">Outbound</option>
-                </select>
-              </label>
-
-              <div className="sm:col-span-2 flex justify-end">
-                <Button type="submit">Analyze Communication</Button>
-              </div>
-            </form>
-
-            {jobId && (
-              <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
-                <p>Imported emails: <strong>{imported}</strong></p>
-                <p>Matched contacts: <strong>{matched}</strong></p>
-                <p>Suggested new contacts: <strong>{suggested}</strong></p>
-                <p>Generated tasks: <strong>{generated}</strong></p>
-                {imported === 0 && (
-                  <p className="mt-2 text-zinc-600">
-                    No emails matched the current filters. Try removing contact filter or widening date range.
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Connected Providers</CardTitle>
-            <CardDescription>Least-privilege read access for Gmail mailboxes.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
             {connections.length === 0 && (
               <p className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-500">
                 No providers connected yet.

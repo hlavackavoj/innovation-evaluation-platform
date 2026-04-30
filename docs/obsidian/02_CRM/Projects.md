@@ -2,72 +2,60 @@
 
 ## Popis
 
-Projekt je hlavní entita systému.
+Projekt je hlavní entita systému. Reprezentuje univerzitní, výzkumný nebo studentský projekt, který může mít startupový nebo spin-off potenciál.
 
-Reprezentuje univerzitní, výzkumný nebo studentský projekt, který může mít startupový nebo spin-off potenciál.
+## Atributy (aktuální schéma)
 
-## Atributy
+| Pole | Typ | Popis |
+|---|---|---|
+| id | String (cuid) | Primární klíč |
+| title | String | Název projektu |
+| description | String | Popis |
+| field | String? | Obor / oblast |
+| stage | PipelineStage | Aktuální fáze pipeline |
+| priority | ProjectPriority | Priorita (LOW/MEDIUM/HIGH/URGENT) |
+| potentialLevel | ProjectPotentialLevel | Potenciál (LOW/MEDIUM/HIGH) |
+| ipStatus | String? | Stav IP ochrany (volný text) |
+| teamStrength | TeamStrength? | TECHNICAL_ONLY / BALANCED / STRONG |
+| businessReadiness | BusinessReadiness? | WEAK / EMERGING / STRONG |
+| nextStep | String? | Popis dalšího kroku |
+| nextStepDueDate | DateTime? | Deadline dalšího kroku |
+| lastContactAt | DateTime? | Datum posledního kontaktu |
+| organizationId | String? | FK na Organization |
+| ownerUserId | String? | FK na User (vlastník) |
+| createdAt | DateTime | Datum vytvoření |
+| updatedAt | DateTime | Datum aktualizace |
 
-- id
-- title
-- description
-- field
-- institution_id
-- owner_user_id
-- stage
-- priority
-- potential_level
-- ip_status
-- team_strength
-- business_readiness
-- next_step
-- next_step_due_date
-- last_contact_at
-- created_at
-- updated_at
+## Pipeline stages
 
-## Stage
+Viz [[../03_Pipeline/Pipeline Stages]].
 
-Odkazuje na [[../03_Pipeline/Pipeline Stages]].
-
-## Potential level
-
-- unknown
-- low
-- medium
-- high
-
-## Priority
-
-- low
-- medium
-- high
-- urgent
+Hodnoty: `DISCOVERY`, `VALIDATION`, `MVP`, `SCALING`, `SPIN_OFF`
 
 ## Vazby
 
-Project má vazby na:
+- `organization` → Organization (volitelné)
+- `owner` → User (volitelné)
+- `contacts` → ProjectContact[] (M:N junction tabulka)
+- `activities` → Activity[]
+- `tasks` → Task[]
+- `recommendations` → Recommendation[]
+- `documents` → ProjectDocument[]
+- `emailAutomationSetting` → ProjectEmailAutomationSetting (1:1)
+- `emailLinks` → ProjectEmailLink[]
+- `syncJobs` → EmailSyncJob[]
 
-- Contacts
-- Organization
-- Activities
-- Tasks
-- Recommendations
-- Owner User
+## Recommendation engine
 
-## UI karta projektu
+Doporučení se syncují při každé aktualizaci projektu přes `syncProjectRecommendations()` v `lib/recommendations.ts`. Viz [[../05_Recommendation_Engine/Recommendation Engine Overview]].
 
-Na detailu projektu zobrazit:
+## Email automation
 
-- název,
-- popis,
-- fázi,
-- potenciál,
-- prioritu,
-- odpovědnou osobu,
-- další krok,
-- deadline dalšího kroku,
-- doporučené kroky,
-- doporučené role,
-- historii aktivit,
-- úkoly.
+Každý projekt může mít nastavení e-mailové automatizace (`ProjectEmailAutomationSetting`):
+- `enabled` – zapnutí automatické synchronizace
+- `schedule` – DAILY / WEEKLY
+- `keywordAliases` – klíčová slova pro párování e-mailů
+- `contacts` – kontakty sledované pro párování
+- `domains` – domény sledované pro párování
+
+Viz [[Email Analyzer]].

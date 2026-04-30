@@ -8,48 +8,74 @@ Innovation Evaluation Platform
 
 Platforma pro řízení inovační pipeline univerzitních a výzkumných projektů.
 
-První verze funguje jako CRM pro projekty. Nad tím postupně vzniká scoring, doporučovací engine a analytika.
+Funguje jako CRM pro projekty s rule-based recommendation enginem a automatizovanou analýzou e-mailové komunikace pomocí AI.
 
-## Moduly
+## Tech stack
 
-1. CRM
-2. Pipeline management
-3. Recommendation engine
-4. Scoring
-5. Dashboardy a statistiky
-6. Bezpečnost a role
+| Vrstva | Technologie |
+|---|---|
+| Framework | Next.js 14 (App Router) |
+| Jazyk | TypeScript |
+| Databáze | PostgreSQL + Prisma 5 |
+| Auth | Kinde Auth |
+| AI | Google Gemini 1.5 Flash |
+| Storage | Supabase Storage |
+| Deployment | Vercel |
+| UI | Tailwind CSS + Lucide React + Framer Motion |
 
-## MVP scope
+## Implementované moduly
 
-První verze obsahuje:
+### 1. CRM
+Projekty, kontakty, organizace, aktivity, úkoly.
+- Stav: **HOTOVO**
+- Viz: [[02_CRM/CRM Overview]]
 
-- přihlášení,
-- evidenci projektů,
-- evidenci kontaktů,
-- pipeline fáze,
-- úkoly,
-- aktivity,
-- doporučené další kroky,
-- doporučené role pomoci,
-- základní dashboard.
+### 2. Pipeline management
+5 fází: DISCOVERY → VALIDATION → MVP → SCALING → SPIN_OFF
+- Stav: **HOTOVO**
+- Viz: [[03_Pipeline/Pipeline Stages]]
 
-## Non-goals pro MVP
+### 3. Recommendation engine
+Rule-based engine doporučující další kroky a role na základě stavu projektu.
+- Stav: **HOTOVO**
+- Viz: [[05_Recommendation_Engine/Recommendation Engine Overview]]
 
-V první verzi neřešíme:
+### 4. Autentizace a role
+Kinde Auth, 5 rolí (ADMIN, MANAGER, EVALUATOR, USER, VIEWER), bootstrap admin.
+- Stav: **HOTOVO**
+- Viz: [[09_Security/Security]]
 
-- komplexní AI doporučení,
-- machine learning,
-- enterprise SSO,
-- investor matching,
-- právní workflow,
-- detailní grantovou databázi,
-- komplexní audit log.
+### 5. Šablony dokumentů
+Upload a přiřazení šablon k pipeline fázím, Supabase Storage.
+- Stav: **HOTOVO**
 
-## Budoucí rozšíření
+### 6. Email Analyzer v2
+OAuth připojení Gmail/Outlook, synchronizace e-mailů, AI analýza, napojení aktivit a automatické generování úkolů.
+- Stav: **HOTOVO** (merged v PR #1)
+- Viz: [[02_CRM/Email Analyzer]]
 
-- matching na konkrétní experty,
-- anonymizovaný benchmarking,
-- exporty pro vedení univerzity,
-- napojení na e-mail a kalendář,
-- AI sumarizace projektu,
-- multi-tenant architektura pro více institucí.
+## Nerealizované moduly (roadmap)
+
+### Scoring model
+Formulář a výpočet skóre potenciálu projektu (0–100).
+- Stav: **NEREALIZOVÁNO** – datový model podporuje `potentialLevel` (LOW/MEDIUM/HIGH), ale scoring formulář neexistuje.
+- Viz: [[04_Scoring/Scoring Model]]
+
+### Expert matching
+Databáze expertů a párování podle oboru a potřeby.
+- Stav: **NEREALIZOVÁNO** – model `Expert` nebyl do databáze přidán.
+
+### Pokročilá analytika
+Dashboard s konverzními metrikami, bottlenecky, průměrnou dobou ve fázi.
+- Stav: **NEREALIZOVÁNO**
+- Viz: [[10_Analytics/Analytics]]
+
+### Enterprise bezpečnost
+SSO, multi-tenant izolace, detailní audit log.
+- Stav: **NEREALIZOVÁNO**
+
+## Architektura aplikace
+
+Aplikace používá Next.js App Router se **Server Actions** (ne REST API).
+
+Server Actions jsou v souborech `app/*/actions.ts`. API routes existují pouze pro Kinde OAuth callbacky a e-mailový sync endpoint.

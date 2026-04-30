@@ -1,111 +1,110 @@
 # Rules
 
-## Rule 1: Projekt je v Evaluation
+Kompletní seznam pravidel tak, jak jsou implementována v `lib/recommendations.ts`.
 
-IF stage = Evaluation
+## Stage-based pravidla (2 pravidla na každou fázi)
 
-THEN recommended_actions:
+### DISCOVERY
 
-- Provést zákaznické rozhovory
-- Ověřit problém a cílovou skupinu
-- Doplnit základní scoring
+**ruleKey:** `stage:discovery:market-size`
+- title: Perform market size analysis
+- suggestedRole: Industry expert
 
-recommended_roles:
-
-- Startup mentor
-- Evaluator
-
-priority: medium
+**ruleKey:** `stage:discovery:target-audience`
+- title: Identify primary target audience
+- suggestedRole: Startup mentor
 
 ---
 
-## Rule 2: Chybí IP status
+### VALIDATION
 
-IF ip_status = missing
+**ruleKey:** `stage:validation:interviews`
+- title: Conduct 10 stakeholder interviews
+- suggestedRole: Startup mentor
 
-THEN recommended_actions:
-
-- Ověřit IP status
-- Zjistit vlastníka výsledků výzkumu
-- Domluvit konzultaci k ochraně IP
-
-recommended_roles:
-
-- IP právník
-- Technology transfer officer
-
-priority: high
+**ruleKey:** `stage:validation:mvp-scope`
+- title: Draft MVP feature list
+- suggestedRole: Evaluator
 
 ---
 
-## Rule 3: Slabá business kompetence v týmu
+### MVP
 
-IF team_strength = technical_only
+**ruleKey:** `stage:mvp:analytics`
+- title: Set up analytics tracking
+- suggestedRole: Technical lead
 
-THEN recommended_actions:
-
-- Najít business mentora
-- Připravit základní business model
-- Ověřit zájem zákazníků
-
-recommended_roles:
-
-- Business mentor
-- Startup coach
-
-priority: medium
+**ruleKey:** `stage:mvp:success-metrics`
+- title: Define success metrics for pilot
+- suggestedRole: Product lead
 
 ---
 
-## Rule 4: Projekt nemá další krok
+### SCALING
 
-IF next_step is empty
+**ruleKey:** `stage:scaling:business-development`
+- title: Build partnership pipeline
+- suggestedRole: Business Developer
 
-THEN recommended_actions:
-
-- Definovat další krok
-- Přiřadit odpovědnou osobu
-- Nastavit deadline
-
-recommended_roles:
-
-- Project manager
-
-priority: high
+**ruleKey:** `stage:scaling:investor-readiness`
+- title: Prepare investor readiness materials
+- suggestedRole: Investor
 
 ---
 
-## Rule 5: Projekt nebyl dlouho kontaktován
+### SPIN_OFF
 
-IF last_contact_at > 30 days ago
+**ruleKey:** `stage:spin-off:company-roadmap`
+- title: Formalize spin-off roadmap
+- suggestedRole: Technology transfer officer
 
-THEN recommended_actions:
-
-- Kontaktovat řešitelský tým
-- Ověřit aktuální stav
-- Aktualizovat projektovou kartu
-
-recommended_roles:
-
-- Project manager
-
-priority: medium
+**ruleKey:** `stage:spin-off:ip-transfer`
+- title: Confirm legal and IP transfer plan
+- suggestedRole: IP lawyer
 
 ---
 
-## Rule 6: Vysoký potenciál a nevyřešený support plan
+## Condition-based pravidla
 
-IF potential_level = high AND stage != Support Plan AND stage != Active Support
+### Chybí IP status
 
-THEN recommended_actions:
+**ruleKey:** `condition:missing-ip-status`
+- Podmínka: `ipStatus` je prázdný nebo null
+- title: Clarify IP status
+- suggestedRole: IP lawyer
 
-- Připravit plán podpory
-- Určit hlavní rizika
-- Naplánovat strategickou schůzku
+---
 
-recommended_roles:
+### Slabá business kompetence
 
-- Innovation manager
-- Startup mentor
+**ruleKey:** `condition:business-capability-gap`
+- Podmínka: `teamStrength === TECHNICAL_ONLY` nebo `businessReadiness === WEAK`
+- title: Strengthen business capability
+- suggestedRole: Business mentor
 
-priority: high
+---
+
+### Chybí další krok
+
+**ruleKey:** `condition:missing-next-step`
+- Podmínka: `nextStep` je prázdný nebo null
+- title: Define the next milestone
+- suggestedRole: Project manager
+
+---
+
+### Stale contact (>30 dní bez kontaktu)
+
+**ruleKey:** `condition:stale-contact`
+- Podmínka: `lastContactAt` je starší než 30 dní
+- title: Reconnect with the project team
+- suggestedRole: Project manager
+
+---
+
+### Vysoký potenciál bez support plánu
+
+**ruleKey:** `condition:high-potential-support-plan`
+- Podmínka: `potentialLevel === HIGH` AND `stage` není SCALING nebo SPIN_OFF
+- title: Prepare a support plan
+- suggestedRole: Innovation manager

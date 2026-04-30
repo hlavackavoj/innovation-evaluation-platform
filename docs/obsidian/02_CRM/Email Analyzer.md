@@ -118,6 +118,46 @@ Outlook delegated permissions: `openid`, `email`, `offline_access`, `Mail.Read`,
 
 ## Implementace
 
+### Data Enrichment Flow
+
+Aktuální flow už není jen import, ale aktivní CRM enrichment:
+
+1. E-mail se načte z providera a deduplikuje (`providerMessageId`).
+2. Zpráva se uloží/aktualizuje v `EmailMessage`.
+3. Z `participants.from[0].email` se vezme doména:
+   - pokud doména neexistuje mezi `Organization.website` doménami, vytvoří se nová `Organization` (`type: COMPANY`).
+4. Z e-mailu odesílatele se hledá `Contact`:
+   - pokud neexistuje, vytvoří se nový kontakt (`role: External Email Contact`) a napojí se na existující/novou organizaci.
+5. AI analýza (`analyzeText`) proběhne nad subject/body a výstup se zaloguje (`console.log("AI Analysis Result:", data)`).
+6. Každý e-mail se uloží jako `Activity` typu `EMAIL` (včetně `aiAnalysis` JSON).
+7. Z `nextSteps` se vytvoří `Task` záznamy a každý task se napojí na kontakt přes `Task.contactId` (i u nového leadu).
+8. Souhrn enrichmentu se uloží do `EmailSyncJob.summary` (počty importů, kontaktů, organizací, aktivit, tasků).
+
+### Enrichment Feed + mazání dat
+
+Na stránce `/email-analyzer` je pod Summary interaktivní feed se třemi sekcemi:
+- nově vytvořené kontakty,
+- detekované úkoly,
+- nově vytvořené organizace (domény).
+
+Každý řádek obsahuje deep link do CRM detailu (`/contacts/[id]`, `/tasks/[id]`, `/organizations/[id]`) a akci smazání.
+
+Mazání běží přes Server Actions:
+- `deleteContactAction(contactId)`
+- `deleteTaskAction(taskId)`
+- `deleteOrganizationAction(organizationId)`
+
+UI používá potvrzení (`confirm`) a po úspěšném smazání provede reaktivní refresh feedu (`useTransition` + `router.refresh()`), takže změna je okamžitě vidět bez manuálního reloadu.
+
+### Integrita dat při mazání (Prisma relace)
+
+- `Task.contactId` má `onDelete: SetNull`:
+  - při smazání kontaktu se task nemaže, jen se odpojí (`contactId = null`).
+- `Contact.organizationId` má `onDelete: SetNull`:
+  - při smazání organizace kontakty zůstávají, jen ztratí vazbu na organizaci.
+- `ProjectContact` má na obou FK `onDelete: Cascade`:
+  - při smazání kontaktu se automaticky smažou junction linky kontakt-projekt.
+
 ### OAuth callback a perzistence tokenů
 
 - Callback běží v `app/api/email/oauth/[provider]/callback/route.ts`.

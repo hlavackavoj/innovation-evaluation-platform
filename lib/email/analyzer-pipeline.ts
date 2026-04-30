@@ -13,6 +13,7 @@ import { refreshAccessToken } from "@/lib/email/oauth-service";
 import { matchEmailToProject } from "@/lib/email/matching";
 import type { EmailDirection, EmailFetchFilter } from "@/lib/email/types";
 import { dedupeProviderMessages } from "@/lib/email/idempotency";
+import type { NormalizedEmailMessage } from "@/lib/email/types";
 
 type AnalyzerOutput = {
   summary: string;
@@ -20,6 +21,188 @@ type AnalyzerOutput = {
   risks: string[];
   nextSteps: Array<{ title: string; dueDays: number }>;
 };
+
+function extractDomain(email?: string | null): string | null {
+  if (!email) return null;
+  const [, rawDomain] = email.toLowerCase().split("@");
+  if (!rawDomain) return null;
+  return rawDomain.trim() || null;
+}
+
+function normalizeWebsiteDomain(website?: string | null): string | null {
+  if (!website) return null;
+
+  try {
+    const url = website.startsWith("http") ? new URL(website) : new URL(`https://${website}`);
+    return url.hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return website
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .split("/")[0]
+      ?.toLowerCase() || null;
+  }
+}
+
+function guessOrganizationName(domain: string): string {
+  const base = domain.split(".")[0] || domain;
+  return base
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((chunk) => chunk[0].toUpperCase() + chunk.slice(1))
+    .join(" ");
+}
+
+function guessContactName(email: string, fallbackName?: string): string {
+  if (fallbackName?.trim()) return fallbackName.trim();
+
+  const localPart = email.split("@")[0] || email;
+  return localPart
+    .replace(/[._-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((chunk) => chunk[0].toUpperCase() + chunk.slice(1))
+    .join(" ");
+}
+
+async function resolveOrganizationByDomain(domain: string) {
+  const organizations = await prisma.organization.findMany({
+    where: {
+      website: {
+        not: null
+      }
+    },
+    select: {
+      id: true,
+      website: true
+    }
+  });
+
+  const existing = organizations.find((org) => normalizeWebsiteDomain(org.website) === domain);
+  if (existing) {
+    return { organizationId: existing.id, created: false, name: null as string | null, domain: null as string | null };
+  }
+
+  const created = await prisma.organization.create({
+    data: {
+      name: guessOrganizationName(domain),
+      type: "COMPANY",
+      website: domain
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return { organizationId: created.id, created: true, name: guessOrganizationName(domain), domain };
+}
+
+async function resolveOrCreateContact(email: string, name?: string) {
+  const existing = await prisma.contact.findFirst({
+    where: {
+      email: {
+        equals: email,
+        mode: "insensitive"
+      }
+    },
+    include: {
+      projectLinks: {
+        select: {
+          projectId: true
+        }
+      }
+    }
+  });
+
+  if (existing) {
+    return {
+      contactId: existing.id,
+      contactName: existing.name,
+      contactEmail: existing.email,
+      organizationId: existing.organizationId,
+      organizationName: null as string | null,
+      organizationDomain: null as string | null,
+      projectIds: existing.projectLinks.map((link) => link.projectId),
+      createdContact: false,
+      createdOrganization: false
+    };
+  }
+
+  const domain = extractDomain(email);
+  const organization = domain ? await resolveOrganizationByDomain(domain) : null;
+
+  const created = await prisma.contact.create({
+    data: {
+      name: guessContactName(email, name),
+      email,
+      role: "External Email Contact",
+      organizationId: organization?.organizationId ?? null
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return {
+    contactId: created.id,
+    contactName: guessContactName(email, name),
+    contactEmail: email,
+    organizationId: organization?.organizationId ?? null,
+    organizationName: organization?.name ?? null,
+    organizationDomain: organization?.domain ?? null,
+    projectIds: [] as string[],
+    createdContact: true,
+    createdOrganization: organization?.created ?? false
+  };
+}
+
+async function resolveProjectIdForActivity(
+  userId: string,
+  explicitProjectId?: string,
+  contactProjectIds: string[] = [],
+  organizationId?: string | null
+) {
+  if (explicitProjectId) {
+    return explicitProjectId;
+  }
+
+  if (contactProjectIds.length > 0) {
+    return contactProjectIds[0];
+  }
+
+  if (organizationId) {
+    const projectByOrg = await prisma.project.findFirst({
+      where: {
+        organizationId,
+        OR: [{ ownerUserId: userId }, { ownerUserId: null }]
+      },
+      orderBy: {
+        updatedAt: "desc"
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (projectByOrg) {
+      return projectByOrg.id;
+    }
+  }
+
+  const fallbackProject = await prisma.project.findFirst({
+    where: {
+      OR: [{ ownerUserId: userId }, { ownerUserId: null }]
+    },
+    orderBy: {
+      updatedAt: "desc"
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return fallbackProject?.id;
+}
 
 export type AnalyzeCommunicationInput = {
   userId: string;
@@ -147,6 +330,228 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
   return parseAnalyzerOutput(response.response.text());
 }
 
+type PersistEmailContext = {
+  userId: string;
+  projectId?: string;
+  keywordAliases: string[];
+  stats: {
+    importedEmails: number;
+    matchedContacts: number;
+    suggestedContacts: number;
+    generatedTasks: number;
+    createdOrganizations: number;
+    createdContacts: number;
+    createdActivities: number;
+  };
+  createdEntities: {
+    contacts: Array<{ id: string; email: string; organizationName: string | null }>;
+    organizations: Array<{ id: string; domain: string }>;
+    tasks: Array<{
+      id: string;
+      title: string;
+      priority: ProjectPriority;
+      contactId: string | null;
+      contactName: string | null;
+    }>;
+  };
+  themes: Set<string>;
+  risks: Set<string>;
+  nextSteps: Set<string>;
+};
+
+async function processEmailMessageForEnrichment(
+  context: PersistEmailContext,
+  connection: { id: string; provider: "GMAIL" | "OUTLOOK"; emailAddress?: string | null },
+  message: NormalizedEmailMessage,
+  projectForMatching: Prisma.ProjectGetPayload<{
+    include: {
+      contacts: { include: { contact: { include: { organization: true } } } };
+      emailAutomationSetting: true;
+    };
+  }> | null
+) {
+  const fromParticipant = message.participants.from[0]?.email?.toLowerCase();
+  const userEmail = connection.emailAddress?.toLowerCase();
+  const direction: EmailDirection =
+    fromParticipant && userEmail
+      ? fromParticipant === userEmail
+        ? "outbound"
+        : "inbound"
+      : "unknown";
+
+  const persistedMessage = await prisma.emailMessage.upsert({
+    where: {
+      providerMessageId: message.providerMessageId
+    },
+    create: {
+      accountConnectionId: connection.id,
+      provider: connection.provider,
+      providerMessageId: message.providerMessageId,
+      providerThreadId: message.providerThreadId,
+      providerParentMessageId: message.providerParentMessageId,
+      internetMessageId: message.internetMessageId,
+      subject: message.subject,
+      direction,
+      participants: message.participants as Prisma.InputJsonValue,
+      sentAt: message.sentAt,
+      snippet: message.snippet,
+      bodyText: message.bodyText,
+      bodyHash: computeBodyHash(message),
+      hasBody: !!message.bodyText
+    },
+    update: {
+      providerThreadId: message.providerThreadId,
+      providerParentMessageId: message.providerParentMessageId,
+      subject: message.subject,
+      direction,
+      participants: message.participants as Prisma.InputJsonValue,
+      sentAt: message.sentAt,
+      snippet: message.snippet,
+      bodyText: message.bodyText,
+      bodyHash: computeBodyHash(message),
+      hasBody: !!message.bodyText
+    }
+  });
+
+  context.stats.importedEmails += 1;
+
+  let senderContactId: string | null = null;
+  let senderOrganizationId: string | null = null;
+  let senderProjectIds: string[] = [];
+  const sender = message.participants.from[0];
+  if (sender?.email) {
+    const senderEmail = sender.email.toLowerCase();
+    const senderResolution = await resolveOrCreateContact(senderEmail, sender.name);
+    senderContactId = senderResolution.contactId;
+    senderOrganizationId = senderResolution.organizationId;
+    senderProjectIds = senderResolution.projectIds;
+
+    if (senderResolution.createdContact) {
+      context.stats.suggestedContacts += 1;
+      context.stats.createdContacts += 1;
+      context.createdEntities.contacts.push({
+        id: senderResolution.contactId,
+        email: senderResolution.contactEmail ?? senderEmail,
+        organizationName: senderResolution.organizationName
+      });
+    }
+    if (senderResolution.createdOrganization) {
+      context.stats.createdOrganizations += 1;
+      if (senderResolution.organizationId && senderResolution.organizationDomain) {
+        context.createdEntities.organizations.push({
+          id: senderResolution.organizationId,
+          domain: senderResolution.organizationDomain
+        });
+      }
+    }
+  }
+
+  let matchedProjectId = context.projectId;
+
+  if (projectForMatching) {
+    const match = matchEmailToProject(
+      projectForMatching,
+      projectForMatching.contacts,
+      context.keywordAliases,
+      message
+    );
+
+    if (match.matched) {
+      await prisma.projectEmailLink.upsert({
+        where: {
+          projectId_emailMessageId: {
+            projectId: projectForMatching.id,
+            emailMessageId: persistedMessage.id
+          }
+        },
+        create: {
+          projectId: projectForMatching.id,
+          emailMessageId: persistedMessage.id,
+          confidence: match.confidence,
+          reason: match.reason
+        },
+        update: {
+          confidence: match.confidence,
+          reason: match.reason
+        }
+      });
+
+      matchedProjectId = projectForMatching.id;
+      context.stats.matchedContacts += match.reason === "contact_email_exact" ? 1 : 0;
+    }
+  }
+
+  const projectIdForActivity = await resolveProjectIdForActivity(
+    context.userId,
+    matchedProjectId,
+    senderProjectIds,
+    senderOrganizationId
+  );
+
+  if (!projectIdForActivity) {
+    return;
+  }
+
+  const joinedText = [message.subject || "", message.snippet || "", message.bodyText || ""].join("\n").trim();
+  const data = await analyzeText(message.subject || "(no subject)", joinedText);
+  console.log("AI Analysis Result:", data);
+
+  for (const theme of data.themes) context.themes.add(theme);
+  for (const risk of data.risks) context.risks.add(risk);
+  for (const step of data.nextSteps) context.nextSteps.add(step.title);
+
+  const activity = await prisma.activity.upsert({
+    where: {
+      emailMessageId: persistedMessage.providerMessageId
+    },
+    create: {
+      projectId: projectIdForActivity,
+      userId: context.userId,
+      type: ActivityType.EMAIL,
+      note: data.summary,
+      emailMessageId: persistedMessage.providerMessageId,
+      emailParentId: persistedMessage.providerParentMessageId,
+      aiAnalysis: data as Prisma.InputJsonValue,
+      activityDate: persistedMessage.sentAt
+    },
+    update: {
+      note: data.summary,
+      emailParentId: persistedMessage.providerParentMessageId,
+      aiAnalysis: data as Prisma.InputJsonValue,
+      activityDate: persistedMessage.sentAt
+    }
+  });
+  context.stats.createdActivities += 1;
+
+  for (const step of data.nextSteps) {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + step.dueDays);
+
+    const createdTask = await prisma.task.create({
+      data: {
+        projectId: projectIdForActivity,
+        contactId: senderContactId,
+        assignedToUserId: null,
+        sourceActivityId: activity.id,
+        title: step.title,
+        description: "Generated from imported communication analysis.",
+        status: TaskStatus.TODO,
+        priority: step.dueDays <= 3 ? ProjectPriority.HIGH : ProjectPriority.MEDIUM,
+        dueDate
+      }
+    });
+    context.createdEntities.tasks.push({
+      id: createdTask.id,
+      title: createdTask.title,
+      priority: createdTask.priority,
+      contactId: senderContactId,
+      contactName: sender?.name?.trim() || null
+    });
+
+    context.stats.generatedTasks += 1;
+  }
+}
+
 export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput) {
   const job = await prisma.emailSyncJob.create({
     data: {
@@ -180,10 +585,26 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
       }
     });
 
-    let importedEmails = 0;
-    let matchedContacts = 0;
-    let suggestedContacts = 0;
-    let generatedTasks = 0;
+    const stats = {
+      importedEmails: 0,
+      matchedContacts: 0,
+      suggestedContacts: 0,
+      generatedTasks: 0,
+      createdOrganizations: 0,
+      createdContacts: 0,
+      createdActivities: 0
+    };
+    const createdEntities = {
+      contacts: [] as Array<{ id: string; email: string; organizationName: string | null }>,
+      organizations: [] as Array<{ id: string; domain: string }>,
+      tasks: [] as Array<{
+        id: string;
+        title: string;
+        priority: ProjectPriority;
+        contactId: string | null;
+        contactName: string | null;
+      }>
+    };
     const themes = new Set<string>();
     const risks = new Set<string>();
     const nextSteps = new Set<string>();
@@ -250,121 +671,25 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
         if (input.direction && input.direction !== "all" && direction !== input.direction) {
           continue;
         }
-
-        const persistedMessage = await prisma.emailMessage.upsert({
-          where: {
-            providerMessageId: message.providerMessageId
-          },
-          create: {
-            accountConnectionId: connection.id,
-            provider: connection.provider,
-            providerMessageId: message.providerMessageId,
-            providerThreadId: message.providerThreadId,
-            providerParentMessageId: message.providerParentMessageId,
-            internetMessageId: message.internetMessageId,
-            subject: message.subject,
-            direction,
-            participants: message.participants as Prisma.InputJsonValue,
-            sentAt: message.sentAt,
-            snippet: message.snippet,
-            bodyText: message.bodyText,
-            bodyHash: computeBodyHash(message),
-            hasBody: !!message.bodyText
-          },
-          update: {
-            providerThreadId: message.providerThreadId,
-            providerParentMessageId: message.providerParentMessageId,
-            subject: message.subject,
-            direction,
-            participants: message.participants as Prisma.InputJsonValue,
-            sentAt: message.sentAt,
-            snippet: message.snippet,
-            bodyText: message.bodyText,
-            bodyHash: computeBodyHash(message),
-            hasBody: !!message.bodyText
-          }
-        });
-
-        importedEmails += 1;
-
-        if (!project) {
-          continue;
-        }
-
-        const match = matchEmailToProject(project, project.contacts, keywordAliases, message);
-
-        if (!match.matched) continue;
-
-        await prisma.projectEmailLink.upsert({
-          where: {
-            projectId_emailMessageId: {
-              projectId: project.id,
-              emailMessageId: persistedMessage.id
-            }
-          },
-          create: {
-            projectId: project.id,
-            emailMessageId: persistedMessage.id,
-            confidence: match.confidence,
-            reason: match.reason
-          },
-          update: {
-            confidence: match.confidence,
-            reason: match.reason
-          }
-        });
-
-        matchedContacts += match.reason === "contact_email_exact" ? 1 : 0;
-
-        const joinedText = [message.subject || "", message.snippet || "", message.bodyText || ""].join("\n").trim();
-
-        const analysis = await analyzeText(message.subject || "(no subject)", joinedText);
-
-        for (const theme of analysis.themes) themes.add(theme);
-        for (const risk of analysis.risks) risks.add(risk);
-        for (const step of analysis.nextSteps) nextSteps.add(step.title);
-
-        const activity = await prisma.activity.upsert({
-          where: {
-            emailMessageId: persistedMessage.providerMessageId
-          },
-          create: {
-            projectId: project.id,
+        await processEmailMessageForEnrichment(
+          {
             userId: input.userId,
-            type: ActivityType.EMAIL,
-            note: analysis.summary,
-            emailMessageId: persistedMessage.providerMessageId,
-            emailParentId: persistedMessage.providerParentMessageId,
-            aiAnalysis: analysis as Prisma.InputJsonValue,
-            activityDate: persistedMessage.sentAt
+            projectId: input.projectId,
+            keywordAliases,
+            stats,
+            createdEntities,
+            themes,
+            risks,
+            nextSteps
           },
-          update: {
-            note: analysis.summary,
-            emailParentId: persistedMessage.providerParentMessageId,
-            aiAnalysis: analysis as Prisma.InputJsonValue,
-            activityDate: persistedMessage.sentAt
-          }
-        });
-
-        for (const step of analysis.nextSteps) {
-          const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + step.dueDays);
-
-          await prisma.task.create({
-            data: {
-              projectId: project.id,
-              assignedToUserId: project.ownerUserId,
-              sourceActivityId: activity.id,
-              title: step.title,
-              description: "Generated from imported communication analysis.",
-              status: TaskStatus.TODO,
-              priority: step.dueDays <= 3 ? ProjectPriority.HIGH : ProjectPriority.MEDIUM,
-              dueDate
-            }
-          });
-
-          generatedTasks += 1;
-        }
+          {
+            id: connection.id,
+            provider: connection.provider,
+            emailAddress: connection.emailAddress
+          },
+          message,
+          project
+        );
       }
 
       await prisma.emailAccountConnection.update({
@@ -374,10 +699,14 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
     }
 
     const summary = {
-      importedEmails,
-      matchedContacts,
-      suggestedContacts,
-      generatedTasks,
+      importedEmails: stats.importedEmails,
+      matchedContacts: stats.matchedContacts,
+      suggestedContacts: stats.suggestedContacts,
+      generatedTasks: stats.generatedTasks,
+      createdOrganizations: stats.createdOrganizations,
+      createdContacts: stats.createdContacts,
+      createdActivities: stats.createdActivities,
+      createdEntities,
       themes: [...themes],
       risks: [...risks],
       nextSteps: [...nextSteps]
@@ -388,10 +717,10 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
         where: { id: job.id },
         data: {
           status: EmailSyncJobStatus.COMPLETED,
-          importedEmails,
-          matchedContacts,
-          suggestedContacts,
-          generatedTasks,
+          importedEmails: stats.importedEmails,
+          matchedContacts: stats.matchedContacts,
+          suggestedContacts: stats.suggestedContacts,
+          generatedTasks: stats.generatedTasks,
           summary: summary as Prisma.InputJsonValue,
           finishedAt: new Date()
         }
@@ -422,5 +751,104 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
     });
 
     throw error;
+  }
+}
+
+export async function runMockEmailEnrichmentTest(input: {
+  userId: string;
+  projectId?: string;
+  messages: NormalizedEmailMessage[];
+}) {
+  const tempConnection = await prisma.emailAccountConnection.create({
+    data: {
+      userId: input.userId,
+      provider: "GMAIL",
+      emailAddress: "debug-sync@innovation.local",
+      externalAccountId: `debug-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      encryptedAccessToken: "debug",
+      scopes: ["debug"],
+      status: "ACTIVE"
+    }
+  });
+
+  try {
+    const project = input.projectId
+      ? await prisma.project.findUnique({
+          where: { id: input.projectId },
+          include: {
+            contacts: {
+              include: {
+                contact: {
+                  include: {
+                    organization: true
+                  }
+                }
+              }
+            },
+            emailAutomationSetting: true
+          }
+        })
+      : null;
+
+    const keywordAliases = project?.emailAutomationSetting?.keywordAliases ?? [];
+    const stats = {
+      importedEmails: 0,
+      matchedContacts: 0,
+      suggestedContacts: 0,
+      generatedTasks: 0,
+      createdOrganizations: 0,
+      createdContacts: 0,
+      createdActivities: 0
+    };
+    const createdEntities = {
+      contacts: [] as Array<{ id: string; email: string; organizationName: string | null }>,
+      organizations: [] as Array<{ id: string; domain: string }>,
+      tasks: [] as Array<{
+        id: string;
+        title: string;
+        priority: ProjectPriority;
+        contactId: string | null;
+        contactName: string | null;
+      }>
+    };
+    const themes = new Set<string>();
+    const risks = new Set<string>();
+    const nextSteps = new Set<string>();
+
+    for (const message of input.messages) {
+      await processEmailMessageForEnrichment(
+        {
+          userId: input.userId,
+          projectId: input.projectId,
+          keywordAliases,
+          stats,
+          createdEntities,
+          themes,
+          risks,
+          nextSteps
+        },
+        {
+          id: tempConnection.id,
+          provider: tempConnection.provider,
+          emailAddress: tempConnection.emailAddress
+        },
+        message,
+        project
+      );
+    }
+
+    return {
+      ...stats,
+      createdEntities,
+      themes: [...themes],
+      risks: [...risks],
+      nextSteps: [...nextSteps]
+    };
+  } finally {
+    await prisma.emailAccountConnection.delete({
+      where: {
+        id: tempConnection.id
+      }
+    });
   }
 }

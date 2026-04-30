@@ -1,63 +1,74 @@
 # API Design
 
-## Projects
+## Architektura
 
-```http
-GET /api/projects
-POST /api/projects
-GET /api/projects/:id
-PUT /api/projects/:id
-DELETE /api/projects/:id
+**Aplikace nepoužívá REST API pro CRM operace.**
+
+Všechny CRM akce jsou implementovány jako **Next.js Server Actions** v `app/*/actions.ts`.
+
+---
+
+## Server Actions (aktuální implementace)
+
+### `app/projects/actions.ts`
+- Vytvoření, editace, smazání projektu
+- Sync doporučení při každé aktualizaci projektu (`syncProjectRecommendations`)
+- Přidávání/odebírání kontaktů z projektu
+- Upload projektových dokumentů (Supabase Storage)
+- Email automation nastavení (enable/disable, schedule, keyword aliases)
+
+### `app/contacts/actions.ts`
+- Vytvoření, editace, smazání kontaktu
+- Propojení s organizací
+
+### `app/organizations/actions.ts`
+- Vytvoření, editace, smazání organizace
+
+### `app/email-analyzer/actions.ts`
+- Spuštění email analýzy (`runCommunicationAnalysis`)
+- Správa OAuth připojení
+
+---
+
+## API Routes (skutečné HTTP endpointy)
+
+### Auth (Kinde)
+```
+GET/POST /api/auth/[kindeAuth]
+```
+Kinde Auth handler – login, callback, logout.
+
+### Email OAuth
+```
+GET /api/email/oauth/[provider]/connect
+```
+Zahájení OAuth flow pro Gmail nebo Outlook. Vrátí redirect URL.
+
+```
+GET /api/email/oauth/[provider]/callback
+```
+OAuth callback – exchange code za token, uložení do DB (šifrovaně).
+
+```
+POST /api/email/oauth/[provider]/disconnect
+```
+Odebrání OAuth připojení pro daného uživatele a providera.
+
+### Email Sync
+```
+POST /api/email/sync
+```
+Spuštění synchronizace e-mailů. Může být voláno manuálně nebo cron joby.
+Autorizace přes `Authorization: Bearer <EMAIL_SYNC_CRON_SECRET>`.
+
+### Ostatní
+```
+GET /api/health
+GET /api/debug-auth  (development only)
 ```
 
-## Contacts
+---
 
-```http
-GET /api/contacts
-POST /api/contacts
-GET /api/contacts/:id
-PUT /api/contacts/:id
-DELETE /api/contacts/:id
-```
+## Env vars pro API
 
-## Organizations
-
-```http
-GET /api/organizations
-POST /api/organizations
-GET /api/organizations/:id
-PUT /api/organizations/:id
-DELETE /api/organizations/:id
-```
-
-## Activities
-
-```http
-GET /api/projects/:id/activities
-POST /api/projects/:id/activities
-```
-
-## Tasks
-
-```http
-GET /api/tasks
-POST /api/tasks
-GET /api/tasks/:id
-PUT /api/tasks/:id
-DELETE /api/tasks/:id
-```
-
-## Recommendations
-
-```http
-GET /api/projects/:id/recommendations
-POST /api/projects/:id/recommendations/generate
-```
-
-## Dashboard
-
-```http
-GET /api/dashboard/summary
-GET /api/dashboard/pipeline
-GET /api/dashboard/tasks
-```
+Viz [[../09_Security/Security]].

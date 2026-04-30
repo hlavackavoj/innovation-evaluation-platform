@@ -1,130 +1,125 @@
 # Data Model
 
-## Entity
+Zdrojová pravda: `prisma/schema.prisma`. Tento dokument je aktuální k dubnu 2026.
 
-- User
-- Organization
-- Contact
-- Project
-- Activity
-- Task
-- Recommendation
-- Expert
+## CRM entity
 
-## Project
+### User
+- `id`, `name`, `email` (unique), `role` (UserRole), `createdAt`, `updatedAt`
+- Vztahy: `ownedProjects`, `activities`, `assignedTasks`, `emailConnections`, `syncJobs`, `auditLogs`
 
-```text
-Project
-- id
-- title
-- description
-- field
-- institution_id
-- owner_user_id
-- stage
-- priority
-- potential_level
-- ip_status
-- team_strength
-- business_readiness
-- next_step
-- next_step_due_date
-- last_contact_at
-- created_at
-- updated_at
-```
+### Organization
+- `id`, `name`, `type` (OrganizationType), `website?`, `notes?`, `createdAt`, `updatedAt`
+- Vztahy: `contacts[]`, `projects[]`
 
-## Contact
+### Contact
+- `id`, `name`, `email?`, `phone?`, `role`, `organizationId?`, `notes?`, `createdAt`, `updatedAt`
+- Vztahy: `organization?`, `projectLinks[]` (M:N), `emailAutomationLinks[]`, `tasks[]`
 
-```text
-Contact
-- id
-- name
-- email
-- phone
-- role
-- organization_id
-- notes
-- created_at
-- updated_at
-```
+### Project
+- `id`, `title`, `description`, `field?`, `stage`, `priority`, `potentialLevel`, `ipStatus?`
+- `teamStrength?`, `businessReadiness?`, `nextStep?`, `nextStepDueDate?`, `lastContactAt?`
+- `organizationId?`, `ownerUserId?`, `createdAt`, `updatedAt`
+- Vztahy: `organization?`, `owner?`, `contacts[]`, `activities[]`, `tasks[]`, `recommendations[]`, `documents[]`, `emailAutomationSetting?`, `emailLinks[]`, `syncJobs[]`
 
-## Organization
+### ProjectContact (junction)
+- `@@id([projectId, contactId])`
 
-```text
-Organization
-- id
-- name
-- type
-- website
-- notes
-- created_at
-- updated_at
-```
+### Activity
+- `id`, `projectId`, `userId?`, `type` (ActivityType), `note`, `emailMessageId?` (unique), `emailParentId?`, `aiAnalysis?` (Json), `activityDate`, `createdAt`
+- Vztahy: `project`, `user?`, `emailMessage?`, `sourceTasks[]`
 
-## Activity
+### Task
+- `id`, `projectId`, `contactId?`, `assignedToUserId?`, `sourceActivityId?`, `title`, `description?`
+- `status` (TaskStatus), `priority` (ProjectPriority), `dueDate?`, `createdAt`, `updatedAt`
+- `contactId?` je volitelná vazba na `Contact` pro Email Analyzer enrichment (tasky z e-mailu jsou navázané na odesílatele).
+- `@@index([contactId])`
+- `@@index([sourceActivityId])`
 
-```text
-Activity
-- id
-- project_id
-- user_id
-- type
-- note
-- activity_date
-- created_at
-```
+### Recommendation
+- `id`, `title`, `description`, `ruleKey`, `projectId`, `status` (RecommendationStatus), `suggestedRole`, `createdAt`, `updatedAt`
+- `@@unique([projectId, ruleKey])` – jeden záznam per pravidlo per projekt
 
-## Task
+### Template
+- `id`, `name`, `description`, `storagePath` (mapped: `fileUrl`), `targetStage` (PipelineStage), `createdAt`
+- Vztahy: `documents[]`
 
-```text
-Task
-- id
-- project_id
-- assigned_to_user_id
-- title
-- description
-- status
-- priority
-- due_date
-- created_at
-- updated_at
-```
+### ProjectDocument
+- `id`, `projectId`, `templateId?`, `name`, `storagePath` (mapped: `fileUrl`), `createdAt`
+- `@@index([projectId, createdAt])`, `@@index([templateId])`
 
-## Recommendation
+---
 
-```text
-Recommendation
-- id
-- project_id
-- type
-- title
-- description
-- priority
-- source_rule
-- created_at
-```
+## Email Analyzer entity
 
-## Expert
+### EmailAccountConnection
+- `id`, `userId`, `provider` (EmailProvider: GMAIL/OUTLOOK), `emailAddress?`, `externalAccountId`
+- `encryptedAccessToken`, `encryptedRefreshToken?`, `tokenExpiresAt?`, `scopes[]`, `status` (EmailConnectionStatus)
+- `lastSyncedAt?`, `lastError?`, `createdAt`, `updatedAt`
+- `@@unique([provider, externalAccountId])`, `@@index([userId, status])`
 
-```text
-Expert
-- id
-- name
-- role
-- specialization
-- organization_id
-- email
-- availability_status
-- notes
-```
+### EmailMessage
+- `id`, `accountConnectionId`, `provider`, `providerMessageId` (unique), `providerThreadId?`, `providerParentMessageId?`
+- `internetMessageId?`, `subject?`, `direction?`, `participants` (Json), `sentAt`
+- `snippet?`, `bodyText?`, `bodyHash?`, `hasBody`, `createdAt`, `updatedAt`
+- `@@index([accountConnectionId, sentAt])`, `@@index([providerThreadId])`
 
-## Vazby
+### ProjectEmailLink
+- `id`, `projectId`, `emailMessageId`, `confidence` (Float), `reason`, `createdAt`
+- `@@unique([projectId, emailMessageId])`
 
-- Project belongs to Organization
-- Project belongs to User as owner
-- Project has many Activities
-- Project has many Tasks
-- Project has many Recommendations
-- Contact belongs to Organization
-- Expert can belong to Organization
+### EmailSyncCursor
+- `id`, `accountConnectionId`, `cursorKey`, `cursorValue`, `updatedAt`
+- `@@unique([accountConnectionId, cursorKey])`
+
+### EmailSyncJob
+- `id`, `userId`, `projectId?`, `accountConnectionId?`, `trigger` (MANUAL/SCHEDULED)
+- `status` (QUEUED/RUNNING/COMPLETED/FAILED), `filterProvider?`, `filterDirection?`, `filterFrom?`, `filterTo?`, `filterContactEmail?`
+- `importedEmails`, `matchedContacts`, `suggestedContacts`, `generatedTasks`, `summary?` (Json)
+- `startedAt?`, `finishedAt?`, `error?`, `createdAt`, `updatedAt`
+- `@@index([userId, createdAt])`, `@@index([projectId, status])`
+
+### ProjectEmailAutomationSetting
+- `id`, `projectId` (unique), `enabled`, `schedule?` (DAILY/WEEKLY), `keywordAliases[]`, `createdAt`, `updatedAt`
+
+### ProjectEmailAutomationContact (junction)
+- `@@id([settingId, contactId])`
+
+### ProjectEmailAutomationDomain
+- `id`, `settingId`, `domain`, `createdAt`
+- `@@unique([settingId, domain])`
+
+---
+
+## AuditLog
+
+- `id`, `userId?`, `action`, `entityType`, `entityId?`, `metadata?` (Json), `createdAt`
+- `@@index([action, createdAt])`
+
+---
+
+## Enums
+
+| Enum | Hodnoty |
+|---|---|
+| UserRole | ADMIN, MANAGER, EVALUATOR, USER, VIEWER |
+| PipelineStage | DISCOVERY, VALIDATION, MVP, SCALING, SPIN_OFF |
+| ProjectPriority | LOW, MEDIUM, HIGH, URGENT |
+| ProjectPotentialLevel | LOW, MEDIUM, HIGH |
+| ActivityType | MEETING, CALL, EMAIL, NOTE, WORKSHOP, EVALUATION |
+| TaskStatus | TODO, IN_PROGRESS, DONE, CANCELLED |
+| OrganizationType | UNIVERSITY, FACULTY, RESEARCH_CENTER, INNOVATION_CENTER, COMPANY, INVESTOR, PUBLIC_INSTITUTION |
+| TeamStrength | TECHNICAL_ONLY, BALANCED, STRONG |
+| BusinessReadiness | WEAK, EMERGING, STRONG |
+| RecommendationStatus | PENDING, COMPLETED, DISMISSED |
+| EmailProvider | GMAIL, OUTLOOK |
+| EmailConnectionStatus | ACTIVE, REVOKED, ERROR |
+| SyncSchedule | DAILY, WEEKLY |
+| EmailSyncJobStatus | QUEUED, RUNNING, COMPLETED, FAILED |
+| EmailSyncJobTrigger | MANUAL, SCHEDULED |
+
+---
+
+## Neimplementováno
+
+Model `Expert` z původního plánu **neexistuje** v schématu.

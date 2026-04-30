@@ -49,7 +49,10 @@ function resolveBootstrapAdminRole(email: string, currentRole: UserRole): UserRo
     return currentRole;
   }
 
-  const configured = process.env.BOOTSTRAP_ADMIN_EMAILS ?? "hlavackavoj@gmail.com";
+  const configured = process.env.BOOTSTRAP_ADMIN_EMAILS;
+  if (!configured || configured.trim().length === 0) {
+    return currentRole;
+  }
   const adminEmails = configured
     .split(",")
     .map((item) => item.trim().toLowerCase())

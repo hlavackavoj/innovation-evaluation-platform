@@ -148,6 +148,7 @@ model Contact {
   organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   projectLinks   ProjectContact[]
   emailAutomationLinks ProjectEmailAutomationContact[]
+  tasks          Task[]
 }
 
 model Project {
@@ -209,6 +210,7 @@ model Activity {
 model Task {
   id               String          @id @default(cuid())
   projectId        String
+  contactId        String?
   assignedToUserId String?
   sourceActivityId String?
   title            String
@@ -219,9 +221,11 @@ model Task {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contact          Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
   assignedTo       User?           @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
   sourceActivity   Activity?       @relation("TaskSourceActivity", fields: [sourceActivityId], references: [id], onDelete: SetNull)
 
+  @@index([contactId])
   @@index([sourceActivityId])
 }
 

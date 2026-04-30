@@ -5,7 +5,7 @@ import { UserRole } from "@prisma/client";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { Navigation } from "@/components/navigation";
 import { ensureUserInDb } from "@/lib/auth";
-import { assertRequiredServerEnv, formatErrorForDisplay } from "@/lib/env";
+import { assertRequiredServerEnv } from "@/lib/env";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -43,11 +43,12 @@ export default async function RootLayout({
     );
   } catch (error) {
     console.error("CRITICAL_LAYOUT_ERROR:", error);
-    const formattedError = formatErrorForDisplay(error);
     return (
       <html lang="en" className={inter.variable}>
         <body className="bg-zinc-50 font-sans antialiased">
-          <div>Error: {formattedError}</div>
+          <div className="mx-auto mt-10 max-w-xl rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+            A server configuration error occurred. Please contact support.
+          </div>
         </body>
       </html>
     );

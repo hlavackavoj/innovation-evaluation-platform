@@ -1,80 +1,42 @@
 # Scoring Model
 
-## Cíl
+## Stav implementace
 
-Scoring pomáhá objektivizovat startupový nebo spin-off potenciál projektu.
+**NEREALIZOVÁNO** – scoring formulář a výpočet skóre zatím neexistují.
 
-V MVP může být scoring jednoduchý a později se zpřesní.
+Datový model ukládá výsledek scoringu jako `potentialLevel` (LOW / MEDIUM / HIGH), ale scoring formulář nebyl vytvořen.
 
-## Kritéria
+## Plán scoringu
 
-### 1. Technologie
+### Kritéria a váhy
 
-Rozsah: 0-20 bodů
+| Kritérium | Rozsah | Hodnotí se |
+|---|---|---|
+| Technologie | 0–20 | Unikátnost, proveditelnost, stav vývoje, odlišitelnost |
+| Trh | 0–20 | Velikost problému, jasnost zákazníka, velikost trhu, ochota platit |
+| Tým | 0–20 | Motivace, business kompetence, tech kompetence, realizovatelnost |
+| IP | 0–20 | Ochrana know-how, patentovatelnost, vlastnictví, právní rizika |
+| Komercializace | 0–20 | Připravenost na pilot, validace, value proposition, partneři |
 
-Hodnotí se:
+### Výpočet
 
-- unikátnost,
-- technická proveditelnost,
-- stav vývoje,
-- odlišitelnost od konkurence.
-
-### 2. Trh
-
-Rozsah: 0-20 bodů
-
-Hodnotí se:
-
-- velikost problému,
-- jasnost zákazníka,
-- velikost trhu,
-- ochota platit.
-
-### 3. Tým
-
-Rozsah: 0-20 bodů
-
-Hodnotí se:
-
-- motivace,
-- business kompetence,
-- technické kompetence,
-- schopnost realizace.
-
-### 4. IP
-
-Rozsah: 0-20 bodů
-
-Hodnotí se:
-
-- ochrana know-how,
-- patentovatelnost,
-- vlastnictví,
-- rizika právních konfliktů.
-
-### 5. Komercializační připravenost
-
-Rozsah: 0-20 bodů
-
-Hodnotí se:
-
-- připravenost na pilot,
-- zákaznická validace,
-- jasný value proposition,
-- existující partneři.
-
-## Výpočet
-
-```text
-total_score = technology + market + team + ip + commercialization_readiness
+```
+total_score = technology + market + team + ip + commercialization
 ```
 
-## Výstupy
+### Výstupy → potentialLevel
 
-- 0-40: low potential
-- 41-70: medium potential
-- 71-100: high potential
+- 0–40 → `LOW`
+- 41–70 → `MEDIUM`
+- 71–100 → `HIGH`
+
+## Co je potřeba k implementaci
+
+1. Scoring formulář na detailu projektu nebo jako samostatná stránka.
+2. Uložení dílčích skóre (nová tabulka nebo JSON pole na Project).
+3. Výpočet a aktualizace `potentialLevel`.
+4. Vizualizace skóre (progress bar nebo radar chart).
 
 ## Poznámka
 
-Scoring nesmí být jediný rozhodovací mechanismus. Má sloužit jako opora pro diskuzi a prioritizaci.
+Scoring nesmí být jediný rozhodovací mechanismus. Má sloužit jako opora pro diskuzi a prioritizaci, ne jako automatické rozhodnutí.

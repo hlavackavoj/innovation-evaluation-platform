@@ -1,92 +1,38 @@
 # Pipeline Stages
 
-## Cíl
+## Aktuální implementace
 
-Pipeline fáze pomáhají řídit stav projektu od prvního zachycení až po spin-off kandidáta nebo archivaci.
+V databázi jsou implementovány **5 fází** (enum `PipelineStage`). Původní plán 8 fází byl zjednodušen.
 
-## Fáze
+| Enum hodnota | Popis (z `lib/constants.ts`) |
+|---|---|
+| `DISCOVERY` | Early discovery work to clarify the opportunity, team readiness, and first institutional fit. |
+| `VALIDATION` | Evidence gathering is underway to test demand, problem urgency, and solution fit. |
+| `MVP` | The team is shaping an MVP plan, pilot scope, and support package for the next milestone. |
+| `SCALING` | The project has traction and is preparing for broader rollout, partnerships, or investment readiness. |
+| `SPIN_OFF` | The opportunity is ready for formal spin-off planning, governance, and launch decisions. |
 
-### 1. New Lead
+## Výchozí fáze
 
-Nově zachycený projekt.
+Nový projekt se vytvoří ve fázi `DISCOVERY`.
 
-Typické kroky:
+## Doporučení podle fáze
 
-- založit projektovou kartu,
-- doplnit základní informace,
-- určit kontaktní osobu.
+Každá fáze má 2 stage-based pravidla doporučovacího enginu. Viz [[../05_Recommendation_Engine/Rules]].
 
-### 2. Initial Screening
+## UI komponenta
 
-Probíhá základní posouzení.
+Fáze je zobrazena v `components/pipeline-stepper.tsx`.
 
-Typické kroky:
+## Mapování na původní plán
 
-- ověřit, o jaký typ projektu jde,
-- zjistit motivaci týmu,
-- odhadnout potenciál.
-
-### 3. Need More Info
-
-Chybí důležité informace.
-
-Typické kroky:
-
-- vyžádat doplnění informací,
-- zjistit IP status,
-- doplnit tým a stav technologie.
-
-### 4. Evaluation
-
-Projekt se hodnotí podle kritérií.
-
-Typické kroky:
-
-- vyplnit scoring,
-- posoudit trh,
-- posoudit tým,
-- posoudit IP.
-
-### 5. Support Plan
-
-Navrhuje se konkrétní plán podpory.
-
-Typické kroky:
-
-- definovat další kroky,
-- přiřadit vhodné role pomoci,
-- vytvořit úkoly.
-
-### 6. Active Support
-
-Projekt je aktivně rozvíjen.
-
-Typické kroky:
-
-- validace trhu,
-- mentoring,
-- prototypování,
-- pilotní zákazníci.
-
-### 7. Spin-off Candidate
-
-Projekt má vysoký potenciál pro spin-off.
-
-Typické kroky:
-
-- řešit právní strukturu,
-- řešit IP převod/licenci,
-- připravit zakladatelský tým,
-- hledat financování.
-
-### 8. Archived
-
-Projekt se dále neposouvá.
-
-Důvody:
-
-- nízký potenciál,
-- nezájem týmu,
-- nejasné IP,
-- chybějící trh,
-- projekt pozastaven.
+| Původní fáze | Aktuální fáze |
+|---|---|
+| New Lead | DISCOVERY |
+| Initial Screening | DISCOVERY |
+| Need More Info | DISCOVERY |
+| Evaluation | VALIDATION |
+| Support Plan | MVP |
+| Active Support | SCALING |
+| Spin-off Candidate | SPIN_OFF |
+| Archived | (není enum, projekt lze označit jinak) |

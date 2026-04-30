@@ -4,30 +4,37 @@
 
 Organizace reprezentuje instituci, firmu nebo centrum spojené s projektem.
 
-## Atributy
+## Atributy (aktuální schéma)
 
-- id
-- name
-- type
-- website
-- notes
-- created_at
-- updated_at
+| Pole | Typ | Popis |
+|---|---|---|
+| id | String (cuid) | Primární klíč |
+| name | String | Název |
+| type | OrganizationType | Typ organizace |
+| website | String? | Webová adresa (používá se pro domain-matching v Email Analyzeru) |
+| notes | String? | Poznámky |
+| createdAt | DateTime | Datum vytvoření |
+| updatedAt | DateTime | Datum aktualizace |
 
-## Typy organizací
+## Typy organizací (OrganizationType)
 
-- university
-- faculty
-- research center
-- innovation center
-- company
-- investor
-- public institution
+- `UNIVERSITY`
+- `FACULTY`
+- `RESEARCH_CENTER`
+- `INNOVATION_CENTER`
+- `COMPANY`
+- `INVESTOR`
+- `PUBLIC_INSTITUTION`
 
 ## Vazby
 
-Organizace může mít:
+- `contacts` → Contact[]
+- `projects` → Project[]
 
-- více kontaktů,
-- více projektů,
-- historii spolupráce.
+## Email Analyzer – využití organizace
+
+Pole `website` se parsuje pro domain-matching při párování e-mailů s projektem.
+
+Příklad: web `https://www.cvut.cz` → doména `cvut.cz` → e-mail od `@cvut.cz` má shodu.
+
+Viz [[Email Analyzer]].

@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireCurrentUser } from "@/lib/authorization";
+import { buildAccessibleProjectWhere, canAccessAllProjects, requireCurrentUser } from "@/lib/authorization";
+import { prisma } from "@/lib/prisma";
 import { runCommunicationAnalysis } from "@/lib/email/analyzer-pipeline";
 import { disconnectProviderForCurrentUser } from "@/lib/email/connections";
 
@@ -35,9 +36,7 @@ export async function analyzeCommunicationAction(formData: FormData) {
     contactEmail: formData.get("contactEmail")?.toString() || undefined
   });
 
-  redirect(
-    `/email-analyzer?jobId=${result.jobId}&imported=${result.importedEmails}&matched=${result.matchedContacts}&suggested=${result.suggestedContacts}&generated=${result.generatedTasks}`
-  );
+  return result;
 }
 
 export async function disconnectConnectionAction(formData: FormData) {
@@ -51,4 +50,100 @@ export async function disconnectConnectionAction(formData: FormData) {
   await disconnectProviderForCurrentUser(provider, connectionId);
   revalidatePath("/email-analyzer");
   redirect("/email-analyzer?toast=provider-disconnected");
+}
+
+export async function deleteContactAction(contactId: string) {
+  const user = await requireCurrentUser();
+  const contact = await prisma.contact.findFirst({
+    where: {
+      id: contactId,
+      ...(canAccessAllProjects(user)
+        ? {}
+        : {
+            projectLinks: {
+              some: {
+                project: buildAccessibleProjectWhere(user)
+              }
+            }
+          })
+    },
+    select: { id: true }
+  });
+
+  if (!contact) {
+    throw new Error("Contact not found or access denied.");
+  }
+
+  await prisma.contact.delete({
+    where: {
+      id: contactId
+    }
+  });
+}
+
+export async function deleteTaskAction(taskId: string) {
+  const user = await requireCurrentUser();
+  const task = await prisma.task.findFirst({
+    where: {
+      id: taskId,
+      project: canAccessAllProjects(user) ? {} : { ownerUserId: user.id }
+    },
+    select: { id: true }
+  });
+
+  if (!task) {
+    throw new Error("Task not found or access denied.");
+  }
+
+  await prisma.task.delete({
+    where: {
+      id: taskId
+    }
+  });
+}
+
+export async function deleteOrganizationAction(organizationId: string) {
+  const user = await requireCurrentUser();
+  const organization = await prisma.organization.findFirst({
+    where: {
+      id: organizationId,
+      ...(canAccessAllProjects(user)
+        ? {}
+        : {
+            OR: [
+              {
+                projects: {
+                  some: {
+                    ownerUserId: user.id
+                  }
+                }
+              },
+              {
+                contacts: {
+                  some: {
+                    projectLinks: {
+                      some: {
+                        project: {
+                          ownerUserId: user.id
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          })
+    },
+    select: { id: true }
+  });
+
+  if (!organization) {
+    throw new Error("Organization not found or access denied.");
+  }
+
+  await prisma.organization.delete({
+    where: {
+      id: organizationId
+    }
+  });
 }
