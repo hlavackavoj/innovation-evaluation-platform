@@ -65,6 +65,27 @@ type TokenResponse = {
 };
 
 async function exchangeCodeForToken(provider: EmailProvider, code: string) {
+  if (provider === "GMAIL") {
+    const { OAuth2Client } = await import("google-auth-library");
+    const cfg = getEmailProviderConfig(provider);
+    const clientId = requiredEnv(cfg.clientIdEnv);
+    const clientSecret = requiredEnv(cfg.clientSecretEnv);
+    const redirectUri = getRedirectUri(provider);
+    const oauthClient = new OAuth2Client(clientId, clientSecret, redirectUri);
+    const { tokens } = await oauthClient.getToken(code);
+
+    return {
+      access_token: tokens.access_token || "",
+      refresh_token: tokens.refresh_token || undefined,
+      expires_in:
+        typeof tokens.expiry_date === "number"
+          ? Math.max(0, Math.floor((tokens.expiry_date - Date.now()) / 1000))
+          : undefined,
+      scope: typeof tokens.scope === "string" ? tokens.scope : undefined,
+      token_type: typeof tokens.token_type === "string" ? tokens.token_type : undefined
+    } as TokenResponse;
+  }
+
   const cfg = getEmailProviderConfig(provider);
   const clientId = requiredEnv(cfg.clientIdEnv);
   const clientSecret = requiredEnv(cfg.clientSecretEnv);
@@ -182,7 +203,7 @@ export async function handleOAuthCallback(input: OAuthCallbackInput) {
   const profile = await fetchAccountProfile(input.provider, token.access_token);
   const cfg = getEmailProviderConfig(input.provider);
 
-  await upsertEmailConnection({
+  const connection = await upsertEmailConnection({
     userId: parsedState.userId,
     provider: input.provider,
     externalAccountId: profile.externalAccountId,
@@ -194,5 +215,10 @@ export async function handleOAuthCallback(input: OAuthCallbackInput) {
   });
 
   const appBase = getAppBaseUrl().replace(/\/$/, "");
-  return `${appBase}${parsedState.returnPath}`;
+  return {
+    redirectTarget: `${appBase}${parsedState.returnPath}`,
+    userId: parsedState.userId,
+    provider: input.provider,
+    connectionId: connection.id
+  };
 }

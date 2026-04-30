@@ -1,12 +1,12 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Shell } from "@/components/shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
 import { AuthorizationError, requireCurrentUser } from "@/lib/authorization";
 import { getCurrentUserEmailConnections } from "@/lib/email/connections";
 import { analyzeCommunicationAction, disconnectConnectionAction } from "@/app/email-analyzer/actions";
+import { ConnectGmailButton } from "@/components/ConnectGmailButton";
 
 export default async function EmailAnalyzerPage({
   searchParams
@@ -59,14 +59,7 @@ export default async function EmailAnalyzerPage({
       title="Email Analyzer"
       description="Import Gmail communication, match to CRM projects, and generate tasks."
       actions={
-        <div className="flex gap-2">
-          <Link
-            href="/api/email/oauth/gmail/connect?returnPath=/email-analyzer"
-            className={buttonVariants({ variant: "outline" })}
-          >
-            Connect Gmail
-          </Link>
-        </div>
+        <ConnectGmailButton returnPath="/email-analyzer" />
       }
     >
       <div className="grid gap-5 lg:grid-cols-[1fr,340px]">

@@ -20,5 +20,15 @@ export async function GET(
     returnPath
   });
 
+  if (request.nextUrl.searchParams.get("mode") === "url") {
+    return new NextResponse(authUrl, {
+      status: 200,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store"
+      }
+    });
+  }
+
   return NextResponse.redirect(authUrl);
 }
