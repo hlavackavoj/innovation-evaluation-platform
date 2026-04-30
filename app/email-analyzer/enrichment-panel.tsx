@@ -28,6 +28,9 @@ type AnalysisResult = {
 };
 
 type TestApiResponse = {
+  error?: string;
+  message?: string;
+  hint?: string;
   enrichmentResult: {
     importedEmails: number;
     matchedContacts: number;
@@ -53,6 +56,7 @@ export function EnrichmentPanel({
   const [isDeleting, startDeleteTransition] = useTransition();
   const [useTestData, setUseTestData] = useState(false);
   const [summary, setSummary] = useState<AnalysisResult | null>(initialSummary);
+  const [testError, setTestError] = useState<string | null>(null);
   const [feed, setFeed] = useState<CreatedEntities>(
     initialSummary?.createdEntities ?? { contacts: [], tasks: [], organizations: [] }
   );
@@ -64,29 +68,39 @@ export function EnrichmentPanel({
 
   const runAnalysis = (formData: FormData) => {
     startTransition(async () => {
-      if (useTestData) {
-        const response = await fetch("/api/debug/test-email-analysis", { method: "POST" });
-        if (!response.ok) {
-          throw new Error("Test analysis failed.");
+      try {
+        setTestError(null);
+        if (useTestData) {
+          const response = await fetch("/api/debug/test-email-analysis", { method: "POST" });
+          if (!response.ok) {
+            const errorPayload = (await response.json().catch(() => null)) as Partial<TestApiResponse> | null;
+            const message = errorPayload?.message || "Test analysis failed.";
+            const hint = errorPayload?.hint ? ` ${errorPayload.hint}` : "";
+            throw new Error(`${message}${hint}`);
+          }
+          const payload = (await response.json()) as TestApiResponse;
+          const result: AnalysisResult = {
+            importedEmails: payload.enrichmentResult.importedEmails,
+            matchedContacts: payload.enrichmentResult.matchedContacts,
+            suggestedContacts: payload.enrichmentResult.suggestedContacts,
+            generatedTasks: payload.enrichmentResult.generatedTasks,
+            createdEntities: payload.enrichmentResult.createdEntities
+          };
+          setSummary(result);
+          setFeed(result.createdEntities ?? { contacts: [], tasks: [], organizations: [] });
+          router.refresh();
+          return;
         }
-        const payload = (await response.json()) as TestApiResponse;
-        const result: AnalysisResult = {
-          importedEmails: payload.enrichmentResult.importedEmails,
-          matchedContacts: payload.enrichmentResult.matchedContacts,
-          suggestedContacts: payload.enrichmentResult.suggestedContacts,
-          generatedTasks: payload.enrichmentResult.generatedTasks,
-          createdEntities: payload.enrichmentResult.createdEntities
-        };
+
+        const result = await analyzeAction(formData);
         setSummary(result);
         setFeed(result.createdEntities ?? { contacts: [], tasks: [], organizations: [] });
         router.refresh();
-        return;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unexpected test error.";
+        setTestError(message);
+        console.error("Email analyzer run failed:", error);
       }
-
-      const result = await analyzeAction(formData);
-      setSummary(result);
-      setFeed(result.createdEntities ?? { contacts: [], tasks: [], organizations: [] });
-      router.refresh();
     });
   };
 
@@ -190,6 +204,12 @@ export function EnrichmentPanel({
               </Button>
             </div>
           </form>
+
+          {testError && (
+            <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+              {testError}
+            </div>
+          )}
 
           {summary && (
             <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
