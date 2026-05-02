@@ -8,6 +8,14 @@ import { getCurrentUserEmailConnections } from "@/lib/email/connections";
 import { analyzeCommunicationAction, disconnectConnectionAction } from "@/app/email-analyzer/actions";
 import { ConnectGmailButton } from "@/components/ConnectGmailButton";
 import { EnrichmentPanel } from "@/app/email-analyzer/enrichment-panel";
+import { ProjectPriority } from "@prisma/client";
+
+function parsePriority(value: unknown): ProjectPriority {
+  if (value === ProjectPriority.HIGH || value === ProjectPriority.MEDIUM || value === ProjectPriority.LOW) {
+    return value;
+  }
+  return ProjectPriority.MEDIUM;
+}
 
 function parseSummary(summary: unknown) {
   if (!summary || typeof summary !== "object") {
@@ -35,8 +43,23 @@ function parseSummary(summary: unknown) {
           organizationName: typeof row.organizationName === "string" ? row.organizationName : null
         };
       }),
-      tasks: tasksRaw,
-      organizations: organizationsRaw
+      tasks: tasksRaw.map((item) => {
+        const row = item as Record<string, unknown>;
+        return {
+          id: String(row.id ?? ""),
+          title: String(row.title ?? "Untitled task"),
+          priority: parsePriority(row.priority),
+          contactId: typeof row.contactId === "string" ? row.contactId : null,
+          contactName: typeof row.contactName === "string" ? row.contactName : null
+        };
+      }),
+      organizations: organizationsRaw.map((item) => {
+        const row = item as Record<string, unknown>;
+        return {
+          id: String(row.id ?? ""),
+          domain: String(row.domain ?? row.website ?? "unknown-domain")
+        };
+      })
     }
   };
 }

@@ -168,6 +168,22 @@ Mazání běží přes Server Actions:
 
 UI používá potvrzení (`confirm`) a po úspěšném smazání provede reaktivní refresh feedu (`useTransition` + `router.refresh()`), takže změna je okamžitě vidět bez manuálního reloadu.
 
+### Jak interaktivně pracovat s výsledky analýzy
+
+1. Otevři `/email-analyzer` a spusť analýzu přes **Analyze Communication**.
+2. Pro testovací scénář zapni toggle **Simulovat testovací data**:
+   - analýza se přesměruje na `POST /api/debug/test-email-analysis`,
+   - provider/direction filtry se v UI zamknou (aby bylo jasné, že běží debug flow).
+3. Pod Summary sleduj sekci **Enrichment Results**:
+   - **Nově vytvořené kontakty**,
+   - **Nové organizace**,
+   - **Detekované úkoly**.
+4. U každé položky můžeš kliknout na **Smazat**:
+   - UI zobrazí potvrzení (`confirm`),
+   - během akce se zobrazí loading stav (spinner),
+   - po úspěchu se zobrazí potvrzení a seznam se okamžitě obnoví.
+5. Detail položky otevřeš přes odkaz v kartě (kontakt/organizace/úkol) a můžeš pokračovat v CRM workflow.
+
 ### Integrita dat při mazání (Prisma relace)
 
 - `Task.contactId` má `onDelete: SetNull`:

@@ -57,6 +57,7 @@ export function EnrichmentPanel({
   const [useTestData, setUseTestData] = useState(false);
   const [summary, setSummary] = useState<AnalysisResult | null>(initialSummary);
   const [testError, setTestError] = useState<string | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [feed, setFeed] = useState<CreatedEntities>(
     initialSummary?.createdEntities ?? { contacts: [], tasks: [], organizations: [] }
   );
@@ -70,6 +71,7 @@ export function EnrichmentPanel({
     startTransition(async () => {
       try {
         setTestError(null);
+        setDeleteMessage(null);
         if (useTestData) {
           const response = await fetch("/api/debug/test-email-analysis", { method: "POST" });
           if (!response.ok) {
@@ -112,14 +114,17 @@ export function EnrichmentPanel({
       if (type === "contact") {
         await deleteContact(id);
         setFeed((prev) => ({ ...prev, contacts: prev.contacts.filter((item) => item.id !== id) }));
+        setDeleteMessage("Kontakt byl smazán.");
       }
       if (type === "task") {
         await deleteTask(id);
         setFeed((prev) => ({ ...prev, tasks: prev.tasks.filter((item) => item.id !== id) }));
+        setDeleteMessage("Úkol byl smazán.");
       }
       if (type === "organization") {
         await deleteOrganizationAction(id);
         setFeed((prev) => ({ ...prev, organizations: prev.organizations.filter((item) => item.id !== id) }));
+        setDeleteMessage("Organizace byla smazána.");
       }
       router.refresh();
     });
@@ -228,7 +233,24 @@ export function EnrichmentPanel({
       </Card>
 
       {hasResults && (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <section className="space-y-3">
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+            <h3 className="text-sm font-semibold text-zinc-900">Enrichment Results</h3>
+            <p className="text-xs text-zinc-600">Nové záznamy vytvořené během poslední analýzy.</p>
+          </div>
+
+          {isDeleting && (
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+              <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+              Mažu záznam…
+            </div>
+          )}
+
+          {deleteMessage && !isDeleting && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{deleteMessage}</div>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-3">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Nově vytvořené kontakty</CardTitle>
@@ -245,13 +267,14 @@ export function EnrichmentPanel({
                   </div>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-8 w-8 p-0"
+                    className="h-8"
                     disabled={isDeleting}
                     onClick={() => onDelete("contact", contact.id)}
                   >
-                    <Trash2 className="h-4 w-4 text-zinc-500" />
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    Smazat
                   </Button>
                 </div>
               ))}
@@ -276,13 +299,14 @@ export function EnrichmentPanel({
                   </div>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-8 w-8 p-0"
+                    className="h-8"
                     disabled={isDeleting}
                     onClick={() => onDelete("task", task.id)}
                   >
-                    <Trash2 className="h-4 w-4 text-zinc-500" />
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    Smazat
                   </Button>
                 </div>
               ))}
@@ -304,19 +328,21 @@ export function EnrichmentPanel({
                   </div>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-8 w-8 p-0"
+                    className="h-8"
                     disabled={isDeleting}
                     onClick={() => onDelete("organization", organization.id)}
                   >
-                    <Trash2 className="h-4 w-4 text-zinc-500" />
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    Smazat
                   </Button>
                 </div>
               ))}
             </CardContent>
           </Card>
-        </div>
+          </div>
+        </section>
       )}
     </div>
   );
