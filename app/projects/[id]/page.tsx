@@ -13,7 +13,8 @@ import {
   User,
   FileText,
   Download,
-  UploadCloud
+  UploadCloud,
+  Plus
 } from "lucide-react";
 import { pipelineStages } from "@/lib/constants";
 import { getProjectById } from "@/lib/data";
@@ -36,6 +37,7 @@ import {
   updateProjectEmailAutomationSettingsAction,
   updateProjectStageAction
 } from "@/app/projects/actions";
+import { createTaskAction } from "@/app/tasks/actions";
 import { activityTypeOptions } from "@/lib/constants";
 
 const potentialProgress = { LOW: 34, MEDIUM: 68, HIGH: 100 } as const;
@@ -586,9 +588,9 @@ export default async function ProjectDetailPage({
                 <CardHeader>
                   <div className="flex items-center gap-1.5">
                     <ClipboardList size={14} className="text-zinc-400" />
-                    <CardTitle className="text-base">Tasks</CardTitle>
+                    <CardTitle className="text-base">Milníky & úkoly</CardTitle>
                   </div>
-                  <CardDescription>Operational follow-up items for this project.</CardDescription>
+                  <CardDescription>Operativní úkoly vázané na tento projekt.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2.5">
                   {project.tasks.length > 0 ? (
@@ -605,15 +607,59 @@ export default async function ProjectDetailPage({
                           <p className="mt-1.5 text-xs text-zinc-400">{task.description}</p>
                         )}
                         <p className="mt-2 text-xs text-zinc-400">
-                          Due {formatDate(task.dueDate)} · {task.assignedTo?.name ?? "Unassigned"}
+                          Termín {formatDate(task.dueDate)} · {task.assignedTo?.name ?? "Nepřiřazeno"}
                         </p>
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 py-6 text-center">
-                      <p className="text-xs text-zinc-400">No tasks yet. Convert a recommendation to create one.</p>
+                    <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 py-4 text-center">
+                      <p className="text-xs text-zinc-400">Žádné úkoly. Přidejte první níže.</p>
                     </div>
                   )}
+
+                  {/* Inline create form */}
+                  <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <Plus size={12} className="text-indigo-600" />
+                      <p className="text-xs font-semibold text-indigo-700">Přidat úkol</p>
+                    </div>
+                    <form action={createTaskAction} className="space-y-2">
+                      <input type="hidden" name="projectId" value={project.id} />
+                      <input
+                        name="title"
+                        required
+                        placeholder="Název úkolu *"
+                        className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-700 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          name="priority"
+                          className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-700"
+                        >
+                          <option value="MEDIUM">Střední</option>
+                          <option value="LOW">Nízká</option>
+                          <option value="HIGH">Vysoká</option>
+                          <option value="URGENT">Urgentní</option>
+                        </select>
+                        <input
+                          name="dueDate"
+                          type="date"
+                          className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-700"
+                        />
+                      </div>
+                      <input
+                        name="description"
+                        placeholder="Popis (volitelné)"
+                        className="w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-700 placeholder:text-zinc-400"
+                      />
+                      <button
+                        type="submit"
+                        className="w-full rounded-md bg-indigo-600 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-700"
+                      >
+                        Vytvořit úkol
+                      </button>
+                    </form>
+                  </div>
                 </CardContent>
               </Card>
 

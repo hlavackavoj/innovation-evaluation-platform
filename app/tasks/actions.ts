@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { ProjectPriority, TaskSuggestionStatus } from "@prisma/client";
+import { ProjectPriority, TaskStatus, TaskSuggestionStatus } from "@prisma/client";
 import { buildAccessibleProjectWhere, canAccessAllProjects, requireCurrentUser } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
 
@@ -32,6 +32,41 @@ async function getAccessibleTask(taskId: string) {
       project: canAccessAllProjects(user) ? {} : buildAccessibleProjectWhere(user)
     }
   });
+}
+
+export async function createTaskAction(formData: FormData) {
+  const user = await requireCurrentUser();
+
+  const projectId = formData.get("projectId")?.toString().trim();
+  if (!projectId) throw new Error("Missing projectId.");
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, ...(canAccessAllProjects(user) ? {} : buildAccessibleProjectWhere(user)) },
+    select: { id: true }
+  });
+  if (!project) throw new Error("Project not found or access denied.");
+
+  const title = formData.get("title")?.toString().trim();
+  if (!title) throw new Error("Task title is required.");
+
+  const description = formData.get("description")?.toString().trim() || null;
+  const dueDate = parseSafeDate(formData.get("dueDate"));
+  const priority = parsePriority(formData.get("priority"));
+
+  await prisma.task.create({
+    data: {
+      projectId,
+      title,
+      description,
+      dueDate,
+      priority,
+      status: TaskStatus.TODO,
+      suggestionStatus: TaskSuggestionStatus.ACCEPTED
+    }
+  });
+
+  revalidatePath("/tasks");
+  revalidatePath(`/projects/${projectId}`);
 }
 
 export async function updateSuggestedTaskAction(formData: FormData) {

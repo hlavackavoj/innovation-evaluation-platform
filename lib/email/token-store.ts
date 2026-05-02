@@ -105,17 +105,46 @@ export async function getDecryptedConnection(connectionId: string) {
   };
 }
 
-export async function updateConnectionToken(connectionId: string, accessToken: string, expiresInSeconds?: number) {
-  return prisma.emailAccountConnection.update({
-    where: { id: connectionId },
+export async function updateConnectionToken(
+  connectionId: string,
+  accessToken: string,
+  expiresInSeconds?: number,
+  expectedUpdatedAt?: Date
+) {
+  const tokenExpiresAt =
+    typeof expiresInSeconds === "number" && expiresInSeconds > 0
+      ? new Date(Date.now() + expiresInSeconds * 1000)
+      : null;
+
+  if (!expectedUpdatedAt) {
+    return prisma.emailAccountConnection.update({
+      where: { id: connectionId },
+      data: {
+        encryptedAccessToken: encryptSecret(accessToken),
+        tokenExpiresAt,
+        status: EmailConnectionStatus.ACTIVE,
+        lastError: null
+      }
+    });
+  }
+
+  const updateResult = await prisma.emailAccountConnection.updateMany({
+    where: { id: connectionId, updatedAt: expectedUpdatedAt },
     data: {
       encryptedAccessToken: encryptSecret(accessToken),
-      tokenExpiresAt:
-        typeof expiresInSeconds === "number" && expiresInSeconds > 0
-          ? new Date(Date.now() + expiresInSeconds * 1000)
-          : null,
+      tokenExpiresAt,
       status: EmailConnectionStatus.ACTIVE,
       lastError: null
     }
+  });
+
+  if (updateResult.count > 0) {
+    return prisma.emailAccountConnection.findUnique({
+      where: { id: connectionId }
+    });
+  }
+
+  return prisma.emailAccountConnection.findUnique({
+    where: { id: connectionId }
   });
 }

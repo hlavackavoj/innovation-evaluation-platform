@@ -1,6 +1,35 @@
 # Progress Log
 
-Aktualizováno: 2. 5. 2026 (session 2)
+Aktualizováno: 3. 5. 2026 (session 3)
+
+## 2026-05-03 — Task/Project UI Fusion, Email Analyzer Fix, Security Hardening
+
+### sanitizeJson — Robustní parsování LLM výstupu (`lib/email/analyzer-pipeline.ts`)
+- Předchozí verze zachytila markdown code block pouze pokud byl na začátku odpovědi.
+- Nová verze: fast-path pro válídní JSON (`startsWith("{")`), regex pro code block kdekoliv v odpovědi (`/```(?:json)?\s*([\s\S]*?)```/`), fallback na extrakci podle prvních/posledních závorek.
+- Dopad: Gemini odpovědi s prose preamble nebo inline fencingem se nyní správně parsují namísto selhání.
+
+### createTaskAction — Nová server action (`app/tasks/actions.ts`)
+- Přidán `createTaskAction(formData)`: vytvoří `Task` s `suggestionStatus: ACCEPTED`, `status: TODO`.
+- Validace: autorizace přes `requireCurrentUser` + `buildAccessibleProjectWhere`, ověření přístupu k projektu.
+- `revalidatePath` na `/tasks` i `/projects/{id}`.
+
+### UI: Vytvoření úkolu z projektu (`app/projects/[id]/page.tsx`)
+- Sidebar Tasks karta přejmenována na "Milníky & úkoly" (CZ terminologie).
+- Přidán inline formulář "Přidat úkol" s `projectId` jako hidden input — auto-binding na kontext projektu.
+- Pole: název (required), priorita (LOW/MEDIUM/HIGH/URGENT), termín (date picker), popis.
+
+### UI: Vytvoření úkolu z globálního přehledu (`app/tasks/page.tsx`)
+- Stránka přejmenována "Čekající milníky".
+- Přidána sekce "Nový úkol" v horní části se selektorem projektu, prioritou, date pickerem a popisem.
+- Import `createTaskAction` z `@/app/tasks/actions`.
+
+### Bezpečnost — audit
+- Ověřeno: `GOOGLE_AI_API_KEY` není nikde logován — používá se výhradně k inicializaci `GoogleGenerativeAI()`.
+- Ověřeno: `addProjectDocumentAction` má `requireProjectAccess(projectId, { write: true })` na prvním řádku.
+- Odstraněny verbose debug logy z `processEmailMessageForEnrichment`: `console.log("AI Analysis Result:", data)` a `console.log("[email-enrichment] Persisting analysisMetadata", ...)`.
+
+
 
 ## 2026-05-02 — University Features: Calendar Bridge, Phase Triggers, Race Fix, Dashboard
 

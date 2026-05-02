@@ -195,7 +195,12 @@ export async function runPostConnectInitialSync(input: {
   ) {
     const refreshed = await refreshAccessToken(connection.provider, connection.refreshToken);
     accessToken = refreshed.access_token;
-    await updateConnectionToken(connection.id, refreshed.access_token, refreshed.expires_in);
+    await updateConnectionToken(
+      connection.id,
+      refreshed.access_token,
+      refreshed.expires_in,
+      connection.updatedAt
+    );
   }
 
   const messages = dedupeProviderMessages(

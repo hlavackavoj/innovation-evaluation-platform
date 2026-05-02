@@ -308,6 +308,7 @@ export type AnalyzeCommunicationInput = {
   dateFrom?: Date;
   dateTo?: Date;
   contactEmail?: string;
+  trigger?: "MANUAL" | "SCHEDULED";
 };
 
 const OUTPUT_EXAMPLE = {
@@ -651,13 +652,23 @@ function buildCalendarProposals(
 function sanitizeJson(text: string) {
   const trimmed = text.trim();
 
-  if (!trimmed.startsWith("```")) {
+  // Already valid JSON — fast path
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     return trimmed;
   }
 
+  // Extract from markdown code block (```json … ``` or ``` … ```) anywhere in response
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch?.[1]) {
+    const inner = codeBlockMatch[1].trim();
+    if (inner.startsWith("{") || inner.startsWith("[")) {
+      return inner;
+    }
+  }
+
+  // JSON embedded in prose — find outermost braces
   const firstBrace = trimmed.indexOf("{");
   const lastBrace = trimmed.lastIndexOf("}");
-
   if (firstBrace >= 0 && lastBrace > firstBrace) {
     return trimmed.slice(firstBrace, lastBrace + 1);
   }
@@ -1285,8 +1296,6 @@ async function processEmailMessageForEnrichment(
 
   const joinedText = [message.subject || "", message.snippet || "", message.bodyText || ""].join("\n").trim();
   const data = await analyzeText(message.subject || "(no subject)", joinedText);
-  console.log("AI Analysis Result:", data);
-
   for (const theme of data.themes) context.themes.add(theme);
   for (const risk of data.risks) context.risks.add(risk);
   for (const step of data.nextSteps) context.nextSteps.add(step.title);
@@ -1309,12 +1318,6 @@ async function processEmailMessageForEnrichment(
     followUpQuestions: data.followUpQuestions,
     processedAt: new Date().toISOString()
   };
-  console.log("[email-enrichment] Persisting analysisMetadata", {
-    providerMessageId: message.providerMessageId,
-    projectIdForActivity,
-    analysisMetadata
-  });
-
   const generatedTaskCandidates =
     data.nextSteps.length > 0 ? data.nextSteps.length : data.suggestedActions.length;
 
@@ -1458,11 +1461,68 @@ async function processEmailMessageForEnrichment(
 }
 
 export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput) {
+  const trigger = input.trigger ?? "MANUAL";
+  const staleThreshold = new Date(Date.now() - 30 * 60 * 1000);
+
+  await prisma.emailSyncJob.updateMany({
+    where: {
+      userId: input.userId,
+      projectId: input.projectId ?? null,
+      status: EmailSyncJobStatus.RUNNING,
+      startedAt: {
+        lt: staleThreshold
+      }
+    },
+    data: {
+      status: EmailSyncJobStatus.FAILED,
+      error: "Marked as failed by watchdog due to stale RUNNING state.",
+      finishedAt: new Date()
+    }
+  });
+
+  const runningJob = await prisma.emailSyncJob.findFirst({
+    where: {
+      userId: input.userId,
+      projectId: input.projectId ?? null,
+      status: EmailSyncJobStatus.RUNNING
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (runningJob) {
+    return {
+      jobId: runningJob.id,
+      skipped: true as const,
+      reason: "sync_already_running",
+      importedEmails: 0,
+      matchedContacts: 0,
+      suggestedContacts: 0,
+      generatedTasks: 0,
+      createdOrganizations: 0,
+      createdContacts: 0,
+      createdActivities: 0,
+      createdEntities: {
+        contacts: [],
+        organizations: [],
+        tasks: [],
+        suggestedProjects: []
+      },
+      themes: [],
+      risks: [],
+      nextSteps: []
+    };
+  }
+
   const job = await prisma.emailSyncJob.create({
     data: {
       userId: input.userId,
       projectId: input.projectId,
-      trigger: "MANUAL",
+      trigger,
       status: EmailSyncJobStatus.RUNNING,
       filterProvider: input.provider,
       filterDirection: input.direction && input.direction !== "all" ? input.direction : null,
@@ -1550,7 +1610,12 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
       ) {
         const refreshed = await refreshAccessToken(connection.provider, connection.refreshToken);
         accessToken = refreshed.access_token;
-        await updateConnectionToken(connection.id, refreshed.access_token, refreshed.expires_in);
+        await updateConnectionToken(
+          connection.id,
+          refreshed.access_token,
+          refreshed.expires_in,
+          connection.updatedAt
+        );
       }
 
       const filter: EmailFetchFilter = {

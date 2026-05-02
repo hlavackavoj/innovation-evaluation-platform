@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { CheckSquare } from "lucide-react";
+import { CheckSquare, Plus } from "lucide-react";
 import { Shell } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
 import { getTasks } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
-import { acceptSuggestedTaskAction, rejectSuggestedTaskAction, updateSuggestedTaskAction } from "@/app/tasks/actions";
+import { acceptSuggestedTaskAction, createTaskAction, rejectSuggestedTaskAction, updateSuggestedTaskAction } from "@/app/tasks/actions";
 
 export default async function TasksPage() {
   const [tasks, projects, contacts] = await Promise.all([
@@ -16,9 +16,59 @@ export default async function TasksPage() {
 
   return (
     <Shell
-      title="Tasks"
-      description="Operational follow-up across all projects — who owns what and when it should happen."
+      title="Čekající milníky"
+      description="Operativní follow-up across all research projects — who owns what and when it should happen."
     >
+      {/* Create Task */}
+      <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+            <Plus size={14} />
+          </div>
+          <p className="text-sm font-semibold text-zinc-900">Nový úkol</p>
+        </div>
+        <form action={createTaskAction} className="grid gap-2 sm:grid-cols-2">
+          <input
+            name="title"
+            required
+            placeholder="Název úkolu *"
+            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:col-span-2"
+          />
+          <select
+            name="projectId"
+            required
+            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700"
+          >
+            <option value="">Vybrat projekt *</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.title}</option>
+            ))}
+          </select>
+          <select name="priority" className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700">
+            <option value="MEDIUM">Priorita: Střední</option>
+            <option value="LOW">Priorita: Nízká</option>
+            <option value="HIGH">Priorita: Vysoká</option>
+            <option value="URGENT">Priorita: Urgentní</option>
+          </select>
+          <input
+            name="dueDate"
+            type="date"
+            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700"
+          />
+          <input
+            name="description"
+            placeholder="Popis (volitelné)"
+            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700 placeholder:text-zinc-400"
+          />
+          <button
+            type="submit"
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 sm:col-span-2"
+          >
+            Vytvořit úkol
+          </button>
+        </form>
+      </div>
+
       {tasks.length > 0 ? (
         <div className="space-y-2.5">
           {tasks.map((task) => (

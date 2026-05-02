@@ -69,15 +69,27 @@ export function resolveBootstrapAdminRole(email: string, currentRole: UserRole):
 export async function getCurrentUser() {
   const { getUser } = getKindeServerSession();
   const kindeUser = await getUser();
+  const kindeId = kindeUser?.id?.trim() ?? "";
   const email = kindeUser?.email?.trim().toLowerCase();
+
+  if (!kindeId && !email) {
+    return null;
+  }
+
+  if (kindeId) {
+    const userByKindeId = await prisma.user.findUnique({
+      where: { kindeId }
+    });
+    if (userByKindeId) {
+      return userByKindeId;
+    }
+  }
 
   if (!email) {
     return null;
   }
 
-  return prisma.user.findUnique({
-    where: { email }
-  });
+  return prisma.user.findUnique({ where: { email } });
 }
 
 export async function ensureUserInDb() {
@@ -117,24 +129,62 @@ export async function ensureUserInDb() {
     });
   }
 
-  // NOTE: Current Prisma model has no `kindeId` unique column yet.
-  // Upsert is therefore keyed by `email` until schema is extended.
-  return prisma.user.upsert({
-    where: { email },
-    update: {
-      name: resolvedName,
-      role: dbRole
-    },
-    create: {
-      email,
-      name: resolvedName,
-      role: dbRole
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true
+  return prisma.$transaction(async (tx) => {
+    const existingByKindeId = await tx.user.findUnique({
+      where: { kindeId }
+    });
+
+    if (existingByKindeId) {
+      return tx.user.update({
+        where: { id: existingByKindeId.id },
+        data: {
+          email,
+          name: resolvedName,
+          role: dbRole
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true
+        }
+      });
     }
+
+    const existingByEmail = await tx.user.findUnique({
+      where: { email }
+    });
+
+    if (existingByEmail) {
+      return tx.user.update({
+        where: { id: existingByEmail.id },
+        data: {
+          kindeId,
+          name: resolvedName,
+          role: dbRole
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true
+        }
+      });
+    }
+
+    return tx.user.create({
+      data: {
+        kindeId,
+        email,
+        name: resolvedName,
+        role: dbRole
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true
+      }
+    });
   });
 }

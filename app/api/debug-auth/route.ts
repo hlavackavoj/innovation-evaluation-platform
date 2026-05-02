@@ -11,17 +11,24 @@ export async function GET() {
     getClaim("roles", "id_token")
   ]);
 
+  const kindeId = kindeUser?.id?.trim() ?? null;
   const email = kindeUser?.email?.trim().toLowerCase() ?? null;
 
-  if (!email) {
+  if (!kindeId && !email) {
     return NextResponse.json(
-      { authenticated: false, error: "No authenticated user email in session." },
+      { authenticated: false, error: "No authenticated user identity in session." },
       { status: 401 }
     );
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { email },
+  const dbUser = await prisma.user.findFirst({
+    where: kindeId
+      ? {
+          OR: [{ kindeId }, ...(email ? [{ email }] : [])]
+        }
+      : {
+          email: email ?? undefined
+        },
     select: { id: true, email: true, role: true, updatedAt: true }
   });
 
@@ -33,7 +40,7 @@ export async function GET() {
   }
 
   const mappedFromKinde = resolveRoleFromSources(kindeRoles, rolesClaim?.value);
-  const resolvedDbRole = resolveBootstrapAdminRole(email, mappedFromKinde);
+  const resolvedDbRole = resolveBootstrapAdminRole(email ?? "", mappedFromKinde);
 
   return NextResponse.json({
     authenticated: true,
