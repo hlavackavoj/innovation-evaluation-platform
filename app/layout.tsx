@@ -12,7 +12,10 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 
 export const metadata: Metadata = {
   title: "Innovation Evaluation Platform",
-  description: "CRM for university and innovation-center pipeline management"
+  description: "CRM for university and innovation-center pipeline management",
+  icons: {
+    icon: "/favicon.png"
+  }
 };
 
 export const dynamic = "force-dynamic";
