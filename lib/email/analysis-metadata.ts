@@ -99,12 +99,16 @@ function parseSuggestedActions(value: unknown): SuggestedAction[] {
           : typeof row.details === "string"
             ? row.details.trim()
             : "";
-      const proposedDateTime =
+      const proposedDateTimeRaw =
         typeof row.proposedDateTime === "string"
-          ? row.proposedDateTime.trim() || null
+          ? row.proposedDateTime.trim()
           : typeof row.proposedAt === "string"
-            ? row.proposedAt.trim() || null
-            : null;
+            ? row.proposedAt.trim()
+            : "";
+      const proposedDateTime =
+        proposedDateTimeRaw && !Number.isNaN(new Date(proposedDateTimeRaw).getTime())
+          ? proposedDateTimeRaw
+          : null;
       const deadline = typeof row.deadline === "string" ? row.deadline.trim() || null : null;
 
       return {
