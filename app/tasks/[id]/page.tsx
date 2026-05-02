@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Prisma } from "@prisma/client";
 import { Shell } from "@/components/shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
@@ -32,7 +33,13 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
         throw error;
       }
 
-      const rows = await prisma.$queryRawUnsafe<Array<{
+      console.error("SQL Fallback triggered due to missing schema - check Neon DB migrations", error);
+
+      const accessFilter = canAccessAllProjects(user)
+        ? Prisma.empty
+        : Prisma.sql`AND p."ownerUserId" = ${user.id}`;
+
+      const rows = await prisma.$queryRaw<Array<{
         id: string;
         title: string;
         description: string | null;
@@ -42,12 +49,11 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
         suggestionStatus: string;
         projectId: string;
         projectTitle: string;
-      }>>(
-        `SELECT t."id", t."title", t."description", t."status", t."priority", t."dueDate", 'ACCEPTED' as "suggestionStatus", p."id" as "projectId", p."title" as "projectTitle"
+      }>>`
+        SELECT t."id", t."title", t."description", t."status", t."priority", t."dueDate", 'ACCEPTED' as "suggestionStatus", p."id" as "projectId", p."title" as "projectTitle"
          FROM "Task" t JOIN "Project" p ON p."id" = t."projectId"
-         WHERE t."id" = ${JSON.stringify(params.id)} ${canAccessAllProjects(user) ? "" : `AND p."ownerUserId" = ${JSON.stringify(user.id)}`}
-         LIMIT 1`
-      );
+         WHERE t."id" = ${params.id} ${accessFilter}
+         LIMIT 1`;
 
       const row = rows[0];
       if (!row) return null;

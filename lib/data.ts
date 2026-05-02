@@ -1,4 +1,4 @@
-import { RecommendationStatus, TaskStatus } from "@prisma/client";
+import { Prisma, RecommendationStatus, TaskStatus } from "@prisma/client";
 import { notFound } from "next/navigation";
 import {
   buildAccessibleProjectWhere,
@@ -416,8 +416,12 @@ export async function getTasks() {
       throw error;
     }
 
-    const ownerFilter = canAccessAllProjects(user) ? "" : `WHERE p."ownerUserId" = ${JSON.stringify(user.id)}`;
-    const rows = await prisma.$queryRawUnsafe<Array<{
+    console.error("SQL Fallback triggered due to missing schema - check Neon DB migrations", error);
+
+    const ownerFilter = canAccessAllProjects(user)
+      ? Prisma.empty
+      : Prisma.sql`WHERE p."ownerUserId" = ${user.id}`;
+    const rows = await prisma.$queryRaw<Array<{
       id: string;
       title: string;
       description: string | null;
@@ -430,8 +434,8 @@ export async function getTasks() {
       projectTitle: string;
       assignedToUserId: string | null;
       assignedToName: string | null;
-    }>>(
-      `SELECT
+    }>>`
+      SELECT
         t."id",
         t."title",
         t."description",
@@ -448,8 +452,8 @@ export async function getTasks() {
       JOIN "Project" p ON p."id" = t."projectId"
       LEFT JOIN "User" u ON u."id" = t."assignedToUserId"
       ${ownerFilter}
-      ORDER BY t."dueDate" ASC NULLS LAST, t."createdAt" DESC`
-    );
+      ORDER BY t."dueDate" ASC NULLS LAST, t."createdAt" DESC
+    `;
 
     return rows.map((row) => ({
       id: row.id,
