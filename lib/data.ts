@@ -15,6 +15,79 @@ import {
 } from "@/lib/recommendations";
 import { createSignedFileUrl } from "@/lib/supabase-storage";
 
+function isMissingActivityAnalysisMetadataColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybe = error as { code?: unknown; meta?: { column?: unknown } };
+  return maybe.code === "P2022" && maybe.meta?.column === "Activity.analysisMetadata";
+}
+
+async function getRecentActivitiesForDashboard(activityWhere: Record<string, unknown>) {
+  try {
+    return await prisma.activity.findMany({
+      where: activityWhere,
+      orderBy: {
+        activityDate: "desc"
+      },
+      take: 5,
+      select: {
+        id: true,
+        type: true,
+        note: true,
+        activityDate: true,
+        analysisMetadata: true,
+        project: {
+          select: {
+            id: true,
+            title: true
+          }
+        },
+        user: {
+          select: {
+            name: true
+          }
+        }
+      }
+    });
+  } catch (error) {
+    if (!isMissingActivityAnalysisMetadataColumn(error)) {
+      throw error;
+    }
+
+    const fallbackRows = await prisma.activity.findMany({
+      where: activityWhere,
+      orderBy: {
+        activityDate: "desc"
+      },
+      take: 5,
+      select: {
+        id: true,
+        type: true,
+        note: true,
+        activityDate: true,
+        project: {
+          select: {
+            id: true,
+            title: true
+          }
+        },
+        user: {
+          select: {
+            name: true
+          }
+        }
+      }
+    });
+
+    return fallbackRows.map((row) => ({
+      ...row,
+      analysisMetadata: null
+    }));
+  }
+}
+
 export async function getDashboardData() {
   const user = await requireCurrentUser();
   const projectWhere = buildAccessibleProjectWhere(user);
@@ -40,31 +113,7 @@ export async function getDashboardData() {
         stage: "asc"
       }
     }),
-    prisma.activity.findMany({
-      where: activityWhere,
-      orderBy: {
-        activityDate: "desc"
-      },
-      take: 5,
-      select: {
-        id: true,
-        type: true,
-        note: true,
-        activityDate: true,
-        analysisMetadata: true,
-        project: {
-          select: {
-            id: true,
-            title: true
-          }
-        },
-        user: {
-          select: {
-            name: true
-          }
-        }
-      }
-    }),
+    getRecentActivitiesForDashboard(activityWhere),
     prisma.project.findMany({
       where: projectWhere,
       orderBy: {

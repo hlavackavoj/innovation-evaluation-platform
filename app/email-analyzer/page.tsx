@@ -65,6 +65,15 @@ function parseSummary(summary: unknown) {
   };
 }
 
+function isMissingActivityAnalysisMetadataColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybe = error as { code?: unknown; meta?: { column?: unknown } };
+  return maybe.code === "P2022" && maybe.meta?.column === "Activity.analysisMetadata";
+}
+
 export default async function EmailAnalyzerPage({
   searchParams
 }: {
@@ -109,26 +118,59 @@ export default async function EmailAnalyzerPage({
         ]
       };
 
-  const recentInsights = await prisma.activity.findMany({
-    where: activityWhere,
-    orderBy: {
-      activityDate: "desc"
-    },
-    take: 12,
-    select: {
-      id: true,
-      note: true,
-      activityDate: true,
-      projectId: true,
-      project: {
+  const recentInsights = await (async () => {
+    try {
+      return await prisma.activity.findMany({
+        where: activityWhere,
+        orderBy: {
+          activityDate: "desc"
+        },
+        take: 12,
         select: {
           id: true,
-          title: true
+          note: true,
+          activityDate: true,
+          projectId: true,
+          project: {
+            select: {
+              id: true,
+              title: true
+            }
+          },
+          analysisMetadata: true
         }
-      },
-      analysisMetadata: true
+      });
+    } catch (error) {
+      if (!isMissingActivityAnalysisMetadataColumn(error)) {
+        throw error;
+      }
+
+      const fallbackRows = await prisma.activity.findMany({
+        where: activityWhere,
+        orderBy: {
+          activityDate: "desc"
+        },
+        take: 12,
+        select: {
+          id: true,
+          note: true,
+          activityDate: true,
+          projectId: true,
+          project: {
+            select: {
+              id: true,
+              title: true
+            }
+          }
+        }
+      });
+
+      return fallbackRows.map((row) => ({
+        ...row,
+        analysisMetadata: null
+      }));
     }
-  });
+  })();
 
   const readFirst = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
   const resolvedSearchParams = await Promise.resolve(searchParams);
