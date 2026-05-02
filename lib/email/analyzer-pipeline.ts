@@ -17,6 +17,8 @@ import type { EmailDirection, EmailFetchFilter } from "@/lib/email/types";
 import { dedupeProviderMessages } from "@/lib/email/idempotency";
 import type { NormalizedEmailMessage } from "@/lib/email/types";
 
+type UniversityPhaseSuggestion = "IDEATION" | "CONTRACTING" | "IMPLEMENTATION" | "DELIVERY";
+
 type AnalyzerOutput = {
   summary: string;
   intentCategory: "MEETING" | "PROPOSAL" | "FEEDBACK" | "ADMIN";
@@ -31,6 +33,8 @@ type AnalyzerOutput = {
   sentimentScore: number;
   isUrgent: boolean;
   suggestedProjectStage: PipelineStage | null;
+  suggestedUniversityPhase: UniversityPhaseSuggestion | null;
+  meetingDatetimes: string[];
   suggestedActions: Array<{
     type: "SCHEDULE_MEETING" | "DRAFT_RESPONSE";
     title: string;
@@ -313,6 +317,8 @@ const OUTPUT_EXAMPLE = {
   sentimentScore: 7,
   isUrgent: false,
   suggestedProjectStage: "DISCOVERY",
+  suggestedUniversityPhase: "CONTRACTING",
+  meetingDatetimes: ["2026-05-05T13:00:00Z"],
   suggestedActions: [
     {
       type: "SCHEDULE_MEETING",
@@ -339,6 +345,7 @@ const OUTPUT_EXAMPLE = {
 };
 
 const PIPELINE_STAGES = new Set<PipelineStage>(Object.values(PipelineStage));
+const UNIVERSITY_PHASES = new Set<UniversityPhaseSuggestion>(["IDEATION", "CONTRACTING", "IMPLEMENTATION", "DELIVERY"]);
 
 function normalizeText(value: string): string {
   return value
@@ -579,6 +586,21 @@ function parseSuggestedProjectStage(value: unknown): PipelineStage | null {
   return PIPELINE_STAGES.has(normalized as PipelineStage) ? (normalized as PipelineStage) : null;
 }
 
+function parseSuggestedUniversityPhase(value: unknown): UniversityPhaseSuggestion | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  return UNIVERSITY_PHASES.has(normalized as UniversityPhaseSuggestion) ? (normalized as UniversityPhaseSuggestion) : null;
+}
+
+function parseMeetingDatetimes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter((v) => v && !Number.isNaN(new Date(v).getTime()));
+}
+
 function sanitizeJson(text: string) {
   const trimmed = text.trim();
 
@@ -701,6 +723,8 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
     const sentimentScore = parseSentimentScore(value.sentimentScore);
     const isUrgent = typeof value.isUrgent === "boolean" ? value.isUrgent : false;
     const suggestedProjectStage = parseSuggestedProjectStage(value.suggestedProjectStage);
+    const suggestedUniversityPhase = parseSuggestedUniversityPhase(value.suggestedUniversityPhase);
+    const meetingDatetimes = parseMeetingDatetimes(value.meetingDatetimes);
     const suggestedActions = Array.isArray(value.suggestedActions)
       ? value.suggestedActions
           .filter((action): action is Record<string, unknown> => !!action && typeof action === "object")
@@ -801,6 +825,8 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
       sentimentScore,
       isUrgent,
       suggestedProjectStage,
+      suggestedUniversityPhase,
+      meetingDatetimes,
       suggestedActions,
       followUpQuestions
     };
@@ -819,6 +845,8 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
       sentimentScore: 5,
       isUrgent: false,
       suggestedProjectStage: null,
+      suggestedUniversityPhase: null,
+      meetingDatetimes: [],
       suggestedActions: [],
       followUpQuestions: []
     };
@@ -839,30 +867,46 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
       sentimentScore: 5,
       isUrgent: false,
       suggestedProjectStage: null,
+      suggestedUniversityPhase: null,
+      meetingDatetimes: [],
       suggestedActions: [],
       followUpQuestions: []
     };
   }
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = client.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
   const analysisDate = toIsoDate(new Date());
   const systemPrompt = [
-    "You are an email CRM analyzer. Return strict JSON only.",
+    "You are an email CRM analyzer for a university innovation platform. Return strict JSON only.",
     "Classify each email into exactly one intentCategory: MEETING, PROPOSAL, FEEDBACK, ADMIN.",
     "Extract actionItems array with fields task, deadline, assignee_suggestion.",
     "Convert relative deadlines like 'do pátku', 'by Friday', 'tomorrow' to ISO date YYYY-MM-DD using analysis_date.",
     "For PROPOSAL intent return exactly 3 followUpQuestions focused on missing CRM intake info (budget, timeline, scope/success criteria).",
     "Scenario guidance:",
-    "1) MEETING: detect request for time slot and add SCHEDULE_MEETING suggested action.",
-    "2) PROPOSAL: detect new project discussion (scope/price/offer).",
+    "1) MEETING: detect request for time slot and add SCHEDULE_MEETING suggested action with full ISO 8601 proposedDateTime.",
+    "2) PROPOSAL: detect new project discussion (scope/price/offer/grant).",
     "3) FEEDBACK: detect response to delivered work, revisions, approval comments.",
     "4) ADMIN: detect invoice/access/login/technical operations communication.",
+    "University project phase detection (suggestedUniversityPhase):",
+    "- IDEATION: email discusses a new idea, concept, or initial interest in a research/innovation project.",
+    "- CONTRACTING: email involves grant applications, NDAs, partnership agreements, budget approval, or signing.",
+    "- IMPLEMENTATION: active project work, milestones, progress reports, or ongoing collaboration.",
+    "- DELIVERY: results handover, final reports, spin-off preparation, or project closure.",
+    "- Set null if university phase context is unclear.",
+    "Meeting datetime extraction (meetingDatetimes):",
+    "- Extract all proposed meeting/call times as full ISO 8601 strings (e.g. 2026-05-05T13:00:00Z).",
+    "- Use the analysis_date timezone context; if only a date is mentioned, use T09:00:00Z as default time.",
+    "- Return empty array [] if no specific meeting time is proposed.",
+    "Task ranking signals:",
+    "- isUrgent: true if grant deadline, contract signing, or critical milestone is implied.",
     "Metadata requirements and allowed values:",
     "- sentimentScore: integer 1-10",
     "- isUrgent: boolean (true if message implies deadline/time pressure)",
     "- suggestedProjectStage: one of DISCOVERY, VALIDATION, MVP, SCALING, SPIN_OFF or null",
-    "- suggestedActions: array of objects with fields type, title, description, proposedDateTime, deadline, dueDays"
+    "- suggestedUniversityPhase: one of IDEATION, CONTRACTING, IMPLEMENTATION, DELIVERY or null",
+    "- meetingDatetimes: array of ISO 8601 datetime strings",
+    "- suggestedActions: array of objects with fields type, title, description, proposedDateTime (ISO 8601 full datetime), deadline, dueDays"
   ].join("\n");
   const userPrompt = [
     "Analyze CRM communication and return strict JSON.",
@@ -899,7 +943,7 @@ async function analyzeTaskSuggestionsWithGemini(params: {
   if (!apiKey) return { projects: [], tasks: [] };
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = client.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
   const prompt = [
     "Return strict JSON only.",
     "Extract project and task proposals from CRM communication.",
@@ -1124,6 +1168,8 @@ async function processEmailMessageForEnrichment(
     sentimentScore: data.sentimentScore,
     isUrgent: data.isUrgent,
     suggestedProjectStage: data.suggestedProjectStage,
+    suggestedUniversityPhase: data.suggestedUniversityPhase,
+    meetingDatetimes: data.meetingDatetimes,
     intentCategory: data.intentCategory,
     actionItems: data.actionItems,
     suggestedActions: data.suggestedActions,

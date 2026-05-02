@@ -2,9 +2,9 @@
 
 ## Přehled
 
-Email Analyzer v2 umožňuje připojit Gmail nebo Outlook účet, synchronizovat e-mailovou komunikaci, automaticky ji spárovat s projekty a analyzovat pomocí AI (Google Gemini 1.5 Flash).
+Email Analyzer v2 umožňuje připojit Gmail nebo Outlook účet, synchronizovat e-mailovou komunikaci, automaticky ji spárovat s projekty a analyzovat pomocí AI (Google Gemini 2.0 Flash Lite).
 
-Stav: **HOTOVO** (merged v PR #1, duben 2026)
+Stav: **AKTIVNĚ ROZVÍJENO** (v2 hotovo duben 2026; university fáze + Draft-to-Task, květen 2026)
 
 ## Architektura
 
@@ -59,21 +59,55 @@ Tři úrovně párování:
 | `organization_domain` | 0.7 | Doména účastníka = doména webu organizace kontaktu |
 | `keyword_alias` | 0.45 | Subject/snippet/body obsahuje název projektu nebo keyword alias |
 
-## AI analýza (Gemini 1.5 Flash)
+## AI analýza (Gemini 2.0 Flash Lite)
 
 Pro každý spárovaný e-mail se volá `analyzeText()`.
 
-Výstup (AnalyzerOutput):
+### Technické rozhodnutí / Odchylka
+Původní specifikace počítala s Gemini 1.5 Flash. Od května 2026 je model upgradován na **gemini-2.0-flash-lite** (nižší latence, lepší JSON compliance). Odkaz: `lib/email/analyzer-pipeline.ts` funkce `analyzeText()` a `analyzeTaskSuggestionsWithGemini()`, také `app/projects/actions.ts`.
+
+Výstup (AnalyzerOutput) – plná struktura:
 ```json
 {
   "summary": "Krátké shrnutí.",
+  "intentCategory": "PROPOSAL",
   "themes": ["IP", "market validation"],
   "risks": ["Missing IP status"],
-  "nextSteps": [{ "title": "Book startup mentor call", "dueDays": 5 }]
+  "nextSteps": [{ "title": "Book startup mentor call", "dueDays": 5 }],
+  "actionItems": [{ "task": "Draft SOW", "deadline": "2026-05-10", "assignee_suggestion": "Alice" }],
+  "sentimentScore": 7,
+  "isUrgent": false,
+  "suggestedProjectStage": "DISCOVERY",
+  "suggestedUniversityPhase": "CONTRACTING",
+  "meetingDatetimes": ["2026-05-05T13:00:00Z"],
+  "suggestedActions": [{ "type": "SCHEDULE_MEETING", "title": "...", "proposedDateTime": "2026-05-05T13:00:00Z", "deadline": null, "dueDays": 2 }],
+  "followUpQuestions": ["Jaký je schválený rozpočet?"]
 }
 ```
 
-Výstup se uloží do `Activity.aiAnalysis` (Json). Z `nextSteps` se automaticky vytvoří `Task` záznamy.
+Výstup se uloží do `Activity.aiAnalysis` (plný) a `Activity.analysisMetadata` (strukturovaná metadata).
+
+### University Phase Detection
+AI detekuje fázi projektu v kontextu univerzitního prostředí:
+- **IDEATION** – nový nápad, počáteční zájem
+- **CONTRACTING** – grantové žádosti, NDA, smlouvy, schválení
+- **IMPLEMENTATION** – aktivní práce, milníky, průběžné zprávy
+- **DELIVERY** – předání výsledků, závěrečné zprávy, spin-off
+
+Hodnota se uloží do `analysisMetadata.suggestedUniversityPhase` (string v JSON).
+Po DB migraci (`npx prisma db push`) se ukládá i do `Project.universityPhase` (enum `UniversityPhase`).
+
+### Meeting Datetime Extraction
+Pole `meetingDatetimes: string[]` obsahuje všechna navrhovaná data schůzek ve formátu ISO 8601 (připraveno pro budoucí napojení na Google Calendar API).
+
+### Draft to Task Workflow
+AI navrhuje úkoly se stavem `suggestionStatus: SUGGESTED`. Uživatel je přijímá přes UI:
+1. V sekci "Detekované úkoly" klikne na **Přijmout** u SUGGESTED úkolu.
+2. Zobrazí se inline formulář s editable: title, description, priority, dueDate.
+3. Po kliknutí na **Uložit** se volá `acceptSuggestedTaskAction()` → `suggestionStatus: ACCEPTED`.
+4. Nepotřebné úkoly lze smazat přes **Smazat**.
+
+Výstup se uloží do `Activity.aiAnalysis` (Json). Z `nextSteps` + Gemini task suggestions se vytvoří `Task` záznamy se stavem `SUGGESTED`.
 
 ## EmailSyncJob
 

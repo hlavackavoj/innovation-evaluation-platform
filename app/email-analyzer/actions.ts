@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ProjectPriority, TaskStatus } from "@prisma/client";
+import { ProjectPriority, TaskSuggestionStatus, TaskStatus } from "@prisma/client";
 import { buildAccessibleProjectWhere, canAccessAllProjects, requireCurrentUser } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
 import { runCommunicationAnalysis } from "@/lib/email/analyzer-pipeline";
@@ -285,6 +285,52 @@ export async function assignActivityToProjectAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/email-analyzer");
   revalidatePath(`/projects/${targetProject.id}`);
+}
+
+type AcceptSuggestedTaskInput = {
+  taskId: string;
+  title: string;
+  description?: string | null;
+  priority: ProjectPriority;
+  dueDateIso?: string | null;
+};
+
+export async function acceptSuggestedTaskAction(input: AcceptSuggestedTaskInput) {
+  const user = await requireCurrentUser();
+  const task = await prisma.task.findFirst({
+    where: {
+      id: input.taskId,
+      suggestionStatus: TaskSuggestionStatus.SUGGESTED,
+      project: canAccessAllProjects(user) ? {} : { ownerUserId: user.id }
+    },
+    select: { id: true, projectId: true }
+  });
+
+  if (!task) {
+    throw new Error("Task not found, already accepted, or access denied.");
+  }
+
+  const trimmedTitle = input.title.trim();
+  if (!trimmedTitle) throw new Error("Task title is required.");
+
+  const dueDate = input.dueDateIso ? new Date(input.dueDateIso) : null;
+  if (dueDate && Number.isNaN(dueDate.getTime())) throw new Error("Invalid due date.");
+
+  await prisma.task.update({
+    where: { id: task.id },
+    data: {
+      title: trimmedTitle,
+      description: input.description?.trim() || null,
+      priority: input.priority,
+      dueDate,
+      suggestionStatus: TaskSuggestionStatus.ACCEPTED
+    }
+  });
+
+  revalidatePath("/email-analyzer");
+  revalidatePath("/tasks");
+  revalidatePath("/");
+  revalidatePath(`/projects/${task.projectId}`);
 }
 
 // Backward-compatible aliases for any existing imports.

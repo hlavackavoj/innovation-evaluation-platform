@@ -86,6 +86,13 @@ enum RecommendationStatus {
   DISMISSED
 }
 
+enum UniversityPhase {
+  IDEATION
+  CONTRACTING
+  IMPLEMENTATION
+  DELIVERY
+}
+
 enum EmailProvider {
   GMAIL
   OUTLOOK
@@ -171,6 +178,7 @@ model Project {
   nextStep          String?
   nextStepDueDate   DateTime?
   lastContactAt     DateTime?
+  universityPhase   UniversityPhase? @map("university_phase")
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
   organizationId    String?

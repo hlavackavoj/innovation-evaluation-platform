@@ -1,6 +1,6 @@
 # Next Steps
 
-Aktualizováno: květen 2026.
+Aktualizováno: 2. 5. 2026.
 
 ## Hotovo (duben 2026)
 
@@ -15,7 +15,23 @@ Aktualizováno: květen 2026.
 - ✅ Test mode toggle: `Simulovat testovací data` přes `/api/debug/test-email-analysis`
 - ✅ Server config hard-fail fix: layout/auth route nepadá globálně při chybějících `KINDE_*` proměnných
 
+## Hotovo (2. 5. 2026 – University CRM & AI Email update)
+
+- ✅ **Gemini 2.0 Flash Lite** – upgradován model ve všech AI volání (`analyzeText`, `analyzeTaskSuggestionsWithGemini`, `processCommunicationAction`)
+- ✅ **University Phase Detection** – AI detekuje fázi projektu: IDEATION / CONTRACTING / IMPLEMENTATION / DELIVERY; ukládá se do `analysisMetadata.suggestedUniversityPhase`
+- ✅ **Meeting Datetime Extraction** – pole `meetingDatetimes: string[]` (ISO 8601) v `analysisMetadata`; připraveno pro Google Calendar napojení
+- ✅ **Draft to Task workflow** – SUGGESTED úkoly mají inline Accept/Edit formulář v enrichment panelu; `acceptSuggestedTaskAction` nastavuje `suggestionStatus: ACCEPTED`
+- ✅ **UniversityPhase DB schema** – přidán `enum UniversityPhase` a `Project.universityPhase` do `schema.prisma`; **POŽADOVÁNA migrace: `npx prisma db push && npx prisma generate`**
+- ✅ **University phase constants** – `universityPhaseLabels`, `universityPhaseDescriptions`, `pipelineStageToUniversityPhase` v `lib/constants.ts`
+
 ## Nejbližší možné kroky
+
+### Email Analyzer – navazující kvalita (po změně 2026-05-02)
+- Přidat cílené testy parseru deadline normalizace (`do pátku`, `next Friday`, `10.5.`, `5/10`).
+- Rozhodnout, jak chceme produktově řešit ambiguous slash datum (`MM/DD` vs `DD/MM`).
+- Doplnit do `/email-analyzer` UI zobrazení `intentCategory`, `actionItems`, `gapAnalysisQuestions`.
+- Připravit fixture sadu reprezentativních e-mailů pro 4 intent kategorie a pravidelně ji pouštět v testech.
+- Detail progressu: `[[99_Notes/PROGRESS-2026-05-02-Email-Analyzer-Intent-Action-Gap]]`.
 
 ### Scoring model
 Přidat scoring formulář na detail projektu. Data pro `potentialLevel` jsou v DB, chybí UI a výpočet.

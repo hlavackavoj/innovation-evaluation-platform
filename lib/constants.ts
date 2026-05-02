@@ -35,3 +35,27 @@ export const stageDescriptions: Record<PipelineStage, string> = {
   SCALING: "The project has traction and is preparing for broader rollout, partnerships, or investment readiness.",
   SPIN_OFF: "The opportunity is ready for formal spin-off planning, governance, and launch decisions."
 };
+
+export type UniversityPhaseSuggestion = "IDEATION" | "CONTRACTING" | "IMPLEMENTATION" | "DELIVERY";
+
+export const universityPhaseLabels: Record<UniversityPhaseSuggestion, string> = {
+  IDEATION: "Ideace",
+  CONTRACTING: "Smluvní zajištění",
+  IMPLEMENTATION: "Realizace",
+  DELIVERY: "Odevzdání výsledků"
+};
+
+export const universityPhaseDescriptions: Record<UniversityPhaseSuggestion, string> = {
+  IDEATION: "Nový nápad nebo koncept, počáteční zájem o výzkumný nebo inovační projekt.",
+  CONTRACTING: "Grantové žádosti, NDA, partnerské smlouvy, schválení rozpočtu nebo podepisování.",
+  IMPLEMENTATION: "Aktivní práce na projektu, milníky, průběžné zprávy nebo probíhající spolupráce.",
+  DELIVERY: "Předání výsledků, závěrečné zprávy, příprava spin-off nebo uzavření projektu."
+};
+
+export const pipelineStageToUniversityPhase: Record<PipelineStage, UniversityPhaseSuggestion> = {
+  DISCOVERY: "IDEATION",
+  VALIDATION: "IDEATION",
+  MVP: "IMPLEMENTATION",
+  SCALING: "IMPLEMENTATION",
+  SPIN_OFF: "DELIVERY"
+};

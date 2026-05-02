@@ -1,6 +1,6 @@
 # System Memory Map
 
-Aktualizováno: 1. 5. 2026
+Aktualizováno: 2. 5. 2026
 Zdroj: aktuální implementace v repozitáři `innovation-evaluation-platform`
 
 ## Co je tato poznámka
@@ -74,8 +74,9 @@ Email Analyzer část:
 Klíčové enumy:
 
 - `PipelineStage`: DISCOVERY, VALIDATION, MVP, SCALING, SPIN_OFF
+- `UniversityPhase`: IDEATION, CONTRACTING, IMPLEMENTATION, DELIVERY *(přidáno 2026-05-02; vyžaduje `npx prisma db push`)*
 - `UserRole`: ADMIN, MANAGER, EVALUATOR, USER, VIEWER
-- `TaskStatus`, `ProjectPriority`, `RecommendationStatus`
+- `TaskStatus`, `TaskSuggestionStatus` (SUGGESTED/ACCEPTED/REJECTED), `ProjectPriority`, `RecommendationStatus`
 
 ## 4) Vazby mezi vrstvami (UI -> Action/API -> Service -> DB)
 
@@ -192,15 +193,40 @@ flowchart TD
 
 - UI: `/email-analyzer`
 - Action: `analyzeCommunicationAction` -> `runCommunicationAnalysis`
+- AI model: **Gemini 2.0 Flash Lite** (`gemini-2.0-flash-lite`)
 - Pipeline (`lib/email/analyzer-pipeline.ts`):
-- fetch zpráv z provideru
-- dedupe (`idempotency.ts`)
-- match na projekt (`matching.ts`):
-- contact email exact
-- organization domain
-- keyword alias
-- AI sumarizace + risk + next steps
-- zápis `Activity`, `Task`, linků na projekt/contact
+  - fetch zpráv z provideru
+  - dedupe (`idempotency.ts`)
+  - match na projekt (`matching.ts`): contact email exact / organization domain / keyword alias
+  - AI analýza (`analyzeText`): summary, intentCategory, themes, risks, nextSteps, actionItems, sentimentScore, isUrgent, suggestedProjectStage, **suggestedUniversityPhase**, **meetingDatetimes**, suggestedActions, followUpQuestions
+  - zápis `Activity` (aiAnalysis + analysisMetadata), `Task` (suggestionStatus: SUGGESTED), linků na projekt/contact
+
+### analysisMetadata struktura (Activity.analysisMetadata)
+```json
+{
+  "themes": ["IP", "market validation"],
+  "risks": ["Missing IP status"],
+  "direction": "inbound",
+  "sentimentScore": 7,
+  "isUrgent": false,
+  "intentCategory": "PROPOSAL",
+  "suggestedProjectStage": "DISCOVERY",
+  "suggestedUniversityPhase": "CONTRACTING",
+  "meetingDatetimes": ["2026-05-05T13:00:00Z"],
+  "actionItems": [{ "task": "...", "deadline": "2026-05-10", "assigneeSuggestion": "Alice" }],
+  "suggestedActions": [{ "type": "SCHEDULE_MEETING", "title": "...", "proposedDateTime": "...", "deadline": null, "dueDays": 2 }],
+  "gapAnalysisQuestions": ["..."],
+  "followUpQuestions": ["..."],
+  "processedAt": "2026-05-02T10:00:00.000Z"
+}
+```
+
+### Draft to Task Workflow
+1. Pipeline vytváří `Task` se `suggestionStatus: SUGGESTED`
+2. `/email-analyzer` enrichment feed zobrazuje SUGGESTED úkoly s tlačítkem **Přijmout**
+3. Inline formulář umožňuje editaci title / description / priority / dueDate
+4. `acceptSuggestedTaskAction()` uloží změny a nastaví `suggestionStatus: ACCEPTED`
+5. Nepotřebné návrhy lze smazat přes **Smazat**
 
 ### Automatický sync
 
@@ -244,10 +270,16 @@ Hotové jádro:
 - Rule-based recommendation engine
 - Basic auth + role-ready model
 - Template/document flow
-- Email Analyzer v2 (Gmail)
+- Email Analyzer v2 (Gmail) + enrichment feed + Draft-to-Task workflow
+- University Phase detection (IDEATION/CONTRACTING/IMPLEMENTATION/DELIVERY)
+- Meeting datetime extraction (ISO 8601, připraveno pro Google Calendar)
+- Gemini 2.0 Flash Lite ve všech AI voláních
 
 Otevřené/next:
 
+- **DB MIGRACE POŽADOVÁNA**: `npx prisma db push && npx prisma generate` (přidáno `UniversityPhase` enum + `Project.universityPhase`)
+- UI pro zobrazení/editaci `universityPhase` na detailu projektu
+- Napojení `meetingDatetimes` na Google Calendar API
 - Outlook enablement (model má enum, connect endpoint je zatím Gmail-only)
 - hlubší analytics/reporting
 - scoring UI

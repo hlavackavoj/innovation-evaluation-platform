@@ -369,7 +369,7 @@ export async function processCommunicationAction(projectId: string, formData: Fo
   }
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = client.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
   const sanitizedContent = content
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[REDACTED_EMAIL]")
     .replace(/\+?\d[\d\s\-()]{7,}\d/g, "[REDACTED_PHONE]")

@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Check, Copy, Loader2, Trash2 } from "lucide-react";
-import { type ProjectPriority } from "@prisma/client";
+import { Check, Copy, Loader2, Pencil, Trash2 } from "lucide-react";
+import { ProjectPriority } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { createTaskFromAiSuggestion, deleteContact, deleteOrganizationAction, deleteTask } from "@/app/email-analyzer/actions";
+import { acceptSuggestedTaskAction, createTaskFromAiSuggestion, deleteContact, deleteOrganizationAction, deleteTask } from "@/app/email-analyzer/actions";
 import { useRouter } from "next/navigation";
 import type { SuggestedAction } from "@/lib/email/analysis-metadata";
 
@@ -90,6 +90,13 @@ export function EnrichmentPanel({
   const [feed, setFeed] = useState<CreatedEntities>(
     initialSummary?.createdEntities ?? { contacts: [], tasks: [], organizations: [] }
   );
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editPriority, setEditPriority] = useState<ProjectPriority>(ProjectPriority.MEDIUM);
+  const [editDueDate, setEditDueDate] = useState("");
+  const [isAccepting, startAcceptTransition] = useTransition();
+  const [acceptMessage, setAcceptMessage] = useState<string | null>(null);
 
   const hasResults = useMemo(
     () => !!summary && (summary.importedEmails > 0 || feed.contacts.length > 0 || feed.tasks.length > 0 || feed.organizations.length > 0),
@@ -211,6 +218,45 @@ export function EnrichmentPanel({
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Nepodařilo se uložit doporučený úkol.";
         setRecommendationMessage(message);
+      }
+    });
+  };
+
+  const openTaskEdit = (task: CreatedEntities["tasks"][number]) => {
+    setEditingTaskId(task.id);
+    setEditTitle(task.title);
+    setEditDescription("");
+    setEditPriority(task.priority);
+    setEditDueDate("");
+    setAcceptMessage(null);
+  };
+
+  const cancelTaskEdit = () => {
+    setEditingTaskId(null);
+  };
+
+  const saveAcceptedTask = (taskId: string) => {
+    startAcceptTransition(async () => {
+      try {
+        await acceptSuggestedTaskAction({
+          taskId,
+          title: editTitle,
+          description: editDescription || null,
+          priority: editPriority,
+          dueDateIso: editDueDate || null
+        });
+        setFeed((prev) => ({
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            t.id === taskId ? { ...t, title: editTitle, priority: editPriority, suggestionStatus: "ACCEPTED" } : t
+          )
+        }));
+        setEditingTaskId(null);
+        setAcceptMessage(`Úkol "${editTitle}" byl přijat a uložen.`);
+        router.refresh();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Nepodařilo se přijmout úkol.";
+        setAcceptMessage(message);
       }
     });
   };
@@ -485,35 +531,117 @@ export function EnrichmentPanel({
               <CardTitle className="text-base">Detekované úkoly</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
+              {acceptMessage && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-900">{acceptMessage}</div>
+              )}
               {feed.tasks.length === 0 && <p className="text-sm text-zinc-500">Žádné nové úkoly.</p>}
               {feed.tasks.map((task) => (
-                <div key={task.id} className="flex items-start justify-between gap-2 rounded-lg border border-zinc-200 p-2">
-                  <div className="min-w-0">
-                    <Link href={`/tasks/${task.id}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
-                      {task.title}
-                    </Link>
-                    <p className="text-xs text-zinc-500">{task.priority} · {task.contactId ? (
-                      <Link href={`/contacts/${task.contactId}`} className="text-indigo-600 hover:text-indigo-700">{task.contactName ?? "Kontakt"}</Link>
-                    ) : "Bez kontaktu"} · {task.suggestionStatus ?? "SUGGESTED"}</p>
-                    {task.projectId && (
-                      <p className="text-xs text-zinc-500">
-                        <Link href={`/projects/${task.projectId}`} className="text-indigo-600 hover:text-indigo-700">
-                          {task.projectTitle ?? "Project"}
+                <div key={task.id} className="rounded-lg border border-zinc-200 p-2">
+                  {editingTaskId === task.id ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">Upravit & přijmout úkol</p>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="w-full rounded border border-zinc-300 p-1.5 text-sm"
+                        placeholder="Název úkolu"
+                      />
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="w-full rounded border border-zinc-300 p-1.5 text-sm"
+                        rows={2}
+                        placeholder="Popis (volitelné)"
+                      />
+                      <div className="flex gap-2">
+                        <select
+                          value={editPriority}
+                          onChange={(e) => setEditPriority(e.target.value as ProjectPriority)}
+                          className="rounded border border-zinc-300 p-1.5 text-sm"
+                        >
+                          {Object.values(ProjectPriority).map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="date"
+                          value={editDueDate}
+                          onChange={(e) => setEditDueDate(e.target.value)}
+                          className="rounded border border-zinc-300 p-1.5 text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={isAccepting || !editTitle.trim()}
+                          onClick={() => saveAcceptedTask(task.id)}
+                        >
+                          {isAccepting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                          Uložit
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={cancelTaskEdit}>
+                          Zrušit
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <Link href={`/tasks/${task.id}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+                          {task.title}
                         </Link>
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8"
-                    disabled={isDeleting}
-                    onClick={() => onDelete("task", task.id)}
-                  >
-                    <Trash2 className="mr-1 h-4 w-4" />
-                    Smazat
-                  </Button>
+                        <p className="text-xs text-zinc-500">
+                          {task.priority} ·{" "}
+                          {task.contactId ? (
+                            <Link href={`/contacts/${task.contactId}`} className="text-indigo-600 hover:text-indigo-700">
+                              {task.contactName ?? "Kontakt"}
+                            </Link>
+                          ) : (
+                            "Bez kontaktu"
+                          )}{" "}
+                          ·{" "}
+                          <span className={task.suggestionStatus === "SUGGESTED" ? "text-amber-700 font-medium" : "text-emerald-700"}>
+                            {task.suggestionStatus ?? "SUGGESTED"}
+                          </span>
+                        </p>
+                        {task.projectId && (
+                          <p className="text-xs text-zinc-500">
+                            <Link href={`/projects/${task.projectId}`} className="text-indigo-600 hover:text-indigo-700">
+                              {task.projectTitle ?? "Project"}
+                            </Link>
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        {(task.suggestionStatus === "SUGGESTED" || !task.suggestionStatus) && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            disabled={isDeleting}
+                            onClick={() => openTaskEdit(task)}
+                          >
+                            <Pencil className="mr-1 h-4 w-4" />
+                            Přijmout
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          disabled={isDeleting}
+                          onClick={() => onDelete("task", task.id)}
+                        >
+                          <Trash2 className="mr-1 h-4 w-4" />
+                          Smazat
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </CardContent>

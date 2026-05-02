@@ -421,20 +421,7 @@ export async function getTasks() {
     const ownerFilter = canAccessAllProjects(user)
       ? Prisma.empty
       : Prisma.sql`WHERE p."ownerUserId" = ${user.id}`;
-    const rows = await prisma.$queryRaw<Array<{
-      id: string;
-      title: string;
-      description: string | null;
-      status: string;
-      priority: string;
-      dueDate: Date | null;
-      createdAt: Date;
-      updatedAt: Date;
-      projectId: string;
-      projectTitle: string;
-      assignedToUserId: string | null;
-      assignedToName: string | null;
-    }>>`
+    const rows = await prisma.$queryRaw`
       SELECT
         t."id",
         t."title",
@@ -453,7 +440,20 @@ export async function getTasks() {
       LEFT JOIN "User" u ON u."id" = t."assignedToUserId"
       ${ownerFilter}
       ORDER BY t."dueDate" ASC NULLS LAST, t."createdAt" DESC
-    `;
+    ` as any as Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      status: string;
+      priority: string;
+      dueDate: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+      projectId: string;
+      projectTitle: string;
+      assignedToUserId: string | null;
+      assignedToName: string | null;
+    }>;
 
     return rows.map((row) => ({
       id: row.id,

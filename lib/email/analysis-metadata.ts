@@ -1,4 +1,5 @@
 import { PipelineStage } from "@prisma/client";
+import type { UniversityPhaseSuggestion } from "@/lib/constants";
 
 export type SuggestedActionType = "SCHEDULE_MEETING" | "DRAFT_RESPONSE";
 
@@ -15,12 +16,15 @@ export type ParsedAnalysisMetadata = {
   sentimentScore: number | null;
   isUrgent: boolean;
   suggestedProjectStage: PipelineStage | null;
+  suggestedUniversityPhase: UniversityPhaseSuggestion | null;
+  meetingDatetimes: string[];
   suggestedActions: SuggestedAction[];
   followUpQuestions: string[];
 };
 
 const STAGES = new Set<PipelineStage>(Object.values(PipelineStage));
 const ACTION_TYPES = new Set<SuggestedActionType>(["SCHEDULE_MEETING", "DRAFT_RESPONSE"]);
+const UNIVERSITY_PHASES = new Set<UniversityPhaseSuggestion>(["IDEATION", "CONTRACTING", "IMPLEMENTATION", "DELIVERY"]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -56,6 +60,21 @@ function parseSuggestedProjectStage(value: unknown): PipelineStage | null {
   const normalized = value.trim().toUpperCase();
   if (!normalized) return null;
   return STAGES.has(normalized as PipelineStage) ? (normalized as PipelineStage) : null;
+}
+
+function parseSuggestedUniversityPhase(value: unknown): UniversityPhaseSuggestion | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  return UNIVERSITY_PHASES.has(normalized as UniversityPhaseSuggestion) ? (normalized as UniversityPhaseSuggestion) : null;
+}
+
+function parseMeetingDatetimes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter((v) => v && !Number.isNaN(new Date(v).getTime()));
 }
 
 function parseSuggestedActions(value: unknown): SuggestedAction[] {
@@ -123,6 +142,8 @@ export function parseAnalysisMetadata(value: unknown): ParsedAnalysisMetadata | 
     sentimentScore: parseSentimentScore(data.sentimentScore),
     isUrgent: Boolean(data.isUrgent),
     suggestedProjectStage: parseSuggestedProjectStage(data.suggestedProjectStage),
+    suggestedUniversityPhase: parseSuggestedUniversityPhase(data.suggestedUniversityPhase),
+    meetingDatetimes: parseMeetingDatetimes(data.meetingDatetimes),
     suggestedActions: parseSuggestedActions(data.suggestedActions),
     followUpQuestions: parseFollowUpQuestions(data.followUpQuestions)
   };
