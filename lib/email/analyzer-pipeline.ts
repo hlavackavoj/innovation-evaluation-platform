@@ -66,6 +66,14 @@ type SuggestedTaskCandidate = {
   reason: string;
 };
 
+type CalendarProposal = {
+  actionType: "SCHEDULE_MEETING" | "DRAFT_RESPONSE";
+  title: string;
+  proposedDateTimeIso: string | null;
+  allDayDateIso: string | null;
+  timezone: "UTC";
+};
+
 type GeminiTaskSuggestionOutput = {
   projects: SuggestedProjectCandidate[];
   tasks: SuggestedTaskCandidate[];
@@ -601,6 +609,44 @@ function parseMeetingDatetimes(value: unknown): string[] {
     .filter((v) => v && !Number.isNaN(new Date(v).getTime()));
 }
 
+function normalizeDateTimeToIso(value: unknown, referenceDate: Date): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
+  const asDateOnly = normalizeDeadlineToIso(trimmed, referenceDate);
+  if (!asDateOnly) return null;
+  return `${asDateOnly}T09:00:00.000Z`;
+}
+
+function buildCalendarProposals(
+  suggestedActions: AnalyzerOutput["suggestedActions"],
+  referenceDate: Date
+): CalendarProposal[] {
+  return suggestedActions
+    .map((action) => {
+      const proposedDateTimeIso = normalizeDateTimeToIso(action.proposedDateTime, referenceDate);
+      const allDayDateIso =
+        !proposedDateTimeIso && action.deadline ? normalizeDeadlineToIso(action.deadline, referenceDate) : null;
+
+      if (!proposedDateTimeIso && !allDayDateIso) {
+        return null;
+      }
+
+      return {
+        actionType: action.type,
+        title: action.title,
+        proposedDateTimeIso,
+        allDayDateIso,
+        timezone: "UTC"
+      } satisfies CalendarProposal;
+    })
+    .filter((item): item is CalendarProposal => !!item);
+}
+
 function sanitizeJson(text: string) {
   const trimmed = text.trim();
 
@@ -747,8 +793,7 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
             if (!title) return null;
 
             const description = typeof action.description === "string" ? action.description.trim() : "";
-            const proposedDateTime =
-              typeof action.proposedDateTime === "string" ? action.proposedDateTime.trim() || null : null;
+            const proposedDateTime = normalizeDateTimeToIso(action.proposedDateTime, referenceDate);
             const deadline = normalizeDeadlineToIso(action.deadline, referenceDate);
             const dueDays = parseDueDays(action.dueDays) ?? parseDueDaysFromIsoDate(deadline, referenceDate);
 
@@ -988,6 +1033,83 @@ export function matchSuggestedProjectToExisting(
   return partial?.id ?? null;
 }
 
+function normalizeTaskTitle(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function applyUniversityTaskPriority(
+  suggestion: Pick<SuggestedTaskCandidate, "title" | "description" | "reason" | "priority">
+): ProjectPriority {
+  const signalText = normalizeText([suggestion.title, suggestion.description ?? "", suggestion.reason].join(" "));
+  if (/(grant deadline|deadline for grant|uzaverka grantu|grantova uzaverka)/.test(signalText)) {
+    return ProjectPriority.URGENT;
+  }
+  if (/(research milestone|milestone|vyzkumny milnik|milnik vyzkumu)/.test(signalText)) {
+    if (suggestion.priority === ProjectPriority.LOW || suggestion.priority === ProjectPriority.MEDIUM) {
+      return ProjectPriority.HIGH;
+    }
+  }
+  return suggestion.priority;
+}
+
+async function createSuggestedTaskIfMissing(params: {
+  activityId: string;
+  projectId: string;
+  contactId: string | null;
+  syncJobId: string | null;
+  suggestion: SuggestedTaskCandidate;
+}) {
+  const dueDate = params.suggestion.deadlineIso ? new Date(params.suggestion.deadlineIso) : null;
+  const normalizedDueDate = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null;
+
+  const existingTask = await prisma.task.findFirst({
+    where: {
+      sourceActivityId: params.activityId,
+      projectId: params.projectId,
+      title: {
+        equals: normalizeTaskTitle(params.suggestion.title),
+        mode: "insensitive"
+      },
+      dueDate: normalizedDueDate,
+      suggestionStatus: TaskSuggestionStatus.SUGGESTED
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (existingTask) {
+    return null;
+  }
+
+  return prisma.task.create({
+    data: {
+      projectId: params.projectId,
+      contactId: params.contactId,
+      sourceSyncJobId: params.syncJobId,
+      assignedToUserId: null,
+      sourceActivityId: params.activityId,
+      title: params.suggestion.title,
+      description: params.suggestion.description,
+      status: TaskStatus.TODO,
+      priority: applyUniversityTaskPriority(params.suggestion),
+      dueDate: normalizedDueDate,
+      suggestionStatus: TaskSuggestionStatus.SUGGESTED,
+      suggestionConfidence: params.suggestion.confidence,
+      suggestionReason: params.suggestion.reason,
+      suggestionMetadata: params.suggestion as Prisma.InputJsonValue
+    },
+    include: {
+      project: {
+        select: {
+          id: true,
+          title: true
+        }
+      }
+    }
+  });
+}
+
 function resolveSuggestedProjectId(
   suggestion: Pick<SuggestedTaskCandidate, "projectName" | "projectRef">,
   knownProjects: Array<{ id: string; title: string }>,
@@ -1194,6 +1316,7 @@ async function processEmailMessageForEnrichment(
     intentCategory: data.intentCategory,
     actionItems: data.actionItems,
     suggestedActions: data.suggestedActions,
+    calendarProposals: buildCalendarProposals(data.suggestedActions, new Date()),
     gapAnalysisQuestions: data.followUpQuestions,
     followUpQuestions: data.followUpQuestions,
     processedAt: new Date().toISOString()
@@ -1288,35 +1411,16 @@ async function processEmailMessageForEnrichment(
             select: { id: true }
           })
         : null;
-      const dueDate = suggestion.deadlineIso ? new Date(suggestion.deadlineIso) : null;
-      const normalizedDueDate = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null;
-
-      const task = await prisma.task.create({
-        data: {
-          projectId: resolvedProjectId,
-          contactId: suggestionContact?.id ?? senderContactId,
-          sourceSyncJobId: context.jobId === "mock-job" ? null : context.jobId,
-          assignedToUserId: null,
-          sourceActivityId: activity.id,
-          title: suggestion.title,
-          description: suggestion.description,
-          status: TaskStatus.TODO,
-          priority: suggestion.priority,
-          dueDate: normalizedDueDate,
-          suggestionStatus: TaskSuggestionStatus.SUGGESTED,
-          suggestionConfidence: suggestion.confidence,
-          suggestionReason: suggestion.reason,
-          suggestionMetadata: suggestion as Prisma.InputJsonValue
-        },
-        include: {
-          project: {
-            select: {
-              id: true,
-              title: true
-            }
-          }
-        }
+      const task = await createSuggestedTaskIfMissing({
+        activityId: activity.id,
+        projectId: resolvedProjectId,
+        contactId: suggestionContact?.id ?? senderContactId,
+        syncJobId: context.jobId === "mock-job" ? null : context.jobId,
+        suggestion
       });
+      if (!task) {
+        continue;
+      }
 
       context.stats.generatedTasks += 1;
       context.createdEntities.tasks.push({
@@ -1340,34 +1444,16 @@ async function processEmailMessageForEnrichment(
       return;
     }
     for (const suggestion of fallbackCandidateTasks) {
-      const dueDate = suggestion.deadlineIso ? new Date(suggestion.deadlineIso) : null;
-      const normalizedDueDate = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null;
-      const task = await prisma.task.create({
-        data: {
-          projectId: projectIdForActivity,
-          contactId: senderContactId,
-          sourceSyncJobId: context.jobId === "mock-job" ? null : context.jobId,
-          assignedToUserId: null,
-          sourceActivityId: activity.id,
-          title: suggestion.title,
-          description: suggestion.description,
-          status: TaskStatus.TODO,
-          priority: suggestion.priority,
-          dueDate: normalizedDueDate,
-          suggestionStatus: TaskSuggestionStatus.SUGGESTED,
-          suggestionConfidence: suggestion.confidence,
-          suggestionReason: suggestion.reason,
-          suggestionMetadata: suggestion as Prisma.InputJsonValue
-        },
-        include: {
-          project: {
-            select: {
-              id: true,
-              title: true
-            }
-          }
-        }
+      const task = await createSuggestedTaskIfMissing({
+        activityId: activity.id,
+        projectId: projectIdForActivity,
+        contactId: senderContactId,
+        syncJobId: context.jobId === "mock-job" ? null : context.jobId,
+        suggestion
       });
+      if (!task) {
+        continue;
+      }
       context.stats.generatedTasks += 1;
       context.createdEntities.tasks.push({
         id: task.id,

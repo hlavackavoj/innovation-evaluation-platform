@@ -20,7 +20,8 @@ function collectRoleKeys(value: unknown): string[] {
     const direct = [role.key, role.name]
       .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
       .map((item) => item.toLowerCase());
-    return [...direct, ...collectRoleKeys(role.value)];
+    const nestedValues = Object.values(value as Record<string, unknown>).flatMap((nested) => collectRoleKeys(nested));
+    return [...direct, ...collectRoleKeys(role.value), ...nestedValues];
   }
 
   return [];
@@ -44,32 +45,12 @@ function resolveRoleFromSources(...sources: unknown[]): UserRole {
   return "VIEWER";
 }
 
-function roleRank(role: UserRole): number {
-  switch (role) {
-    case "ADMIN":
-      return 5;
-    case "MANAGER":
-      return 4;
-    case "EVALUATOR":
-      return 3;
-    case "USER":
-      return 2;
-    case "VIEWER":
-    default:
-      return 1;
-  }
-}
-
-function resolveHighestRole(...roles: UserRole[]): UserRole {
-  return roles.reduce((best, current) => (roleRank(current) > roleRank(best) ? current : best), "VIEWER");
-}
-
 function resolveBootstrapAdminRole(email: string, currentRole: UserRole): UserRole {
   if (currentRole === "ADMIN") {
     return currentRole;
   }
 
-  const configured = process.env.BOOTSTRAP_ADMIN_EMAILS;
+  const configured = process.env.AUTH_EMERGENCY_ADMIN_EMAILS ?? process.env.BOOTSTRAP_ADMIN_EMAILS;
   if (!configured || configured.trim().length === 0) {
     return currentRole;
   }
@@ -116,14 +97,25 @@ export async function ensureUserInDb() {
   const firstName = kindeUser?.given_name?.trim() ?? "";
   const lastName = kindeUser?.family_name?.trim() ?? "";
   const mappedRole = resolveRoleFromSources(kindeRoles, rolesClaim?.value);
-  const existingUser = await prisma.user.findUnique({
-    where: { email },
-    select: { role: true }
-  });
-  const mergedRole = resolveHighestRole(existingUser?.role ?? "VIEWER", mappedRole);
-  const dbRole = resolveBootstrapAdminRole(email, mergedRole);
+  const dbRole = resolveBootstrapAdminRole(email, mappedRole);
   const fallbackName = kindeUser?.email?.split("@")[0] ?? "Kinde User";
   const resolvedName = `${firstName} ${lastName}`.trim() || kindeUser?.username || fallbackName;
+  const shouldDebugAuth = process.env.AUTH_DEBUG === "1";
+
+  if (shouldDebugAuth) {
+    console.log("[auth][ensureUserInDb] Kinde session payload", {
+      kindeUser: {
+        id: kindeUser?.id ?? null,
+        email,
+        givenName: kindeUser?.given_name ?? null,
+        familyName: kindeUser?.family_name ?? null
+      },
+      rolesFromGetRoles: kindeRoles ?? null,
+      rolesClaimFromIdToken: rolesClaim?.value ?? null,
+      mappedRole,
+      resolvedDbRole: dbRole
+    });
+  }
 
   // NOTE: Current Prisma model has no `kindeId` unique column yet.
   // Upsert is therefore keyed by `email` until schema is extended.

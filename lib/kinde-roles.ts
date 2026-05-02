@@ -42,7 +42,9 @@ function toRoleKeys(value: unknown): string[] {
 
     const key = typeof record.key === "string" ? record.key.toLowerCase() : null;
     const name = typeof record.name === "string" ? record.name.toLowerCase() : null;
-    return [key, name].filter((x): x is string => Boolean(x));
+    const direct = [key, name].filter((x): x is string => Boolean(x));
+    const nested = Object.values(record).flatMap((item) => toRoleKeys(item));
+    return [...direct, ...nested];
   }
 
   return [];
