@@ -3,12 +3,13 @@ import { Shell } from "@/components/shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
-import { AuthorizationError, requireCurrentUser } from "@/lib/authorization";
+import { AuthorizationError, buildAccessibleProjectWhere, canAccessAllProjects, requireCurrentUser } from "@/lib/authorization";
 import { getCurrentUserEmailConnections } from "@/lib/email/connections";
 import { analyzeCommunicationAction, disconnectConnectionAction } from "@/app/email-analyzer/actions";
 import { ConnectGmailButton } from "@/components/ConnectGmailButton";
 import { EnrichmentPanel } from "@/app/email-analyzer/enrichment-panel";
 import { ProjectPriority } from "@prisma/client";
+import { parseAnalysisMetadata } from "@/lib/email/analysis-metadata";
 
 function parsePriority(value: unknown): ProjectPriority {
   if (value === ProjectPriority.HIGH || value === ProjectPriority.MEDIUM || value === ProjectPriority.LOW) {
@@ -94,6 +95,41 @@ export default async function EmailAnalyzerPage({
     getCurrentUserEmailConnections()
   ]);
 
+  const activityWhere = canAccessAllProjects(user)
+    ? { type: "EMAIL" as const }
+    : {
+        type: "EMAIL" as const,
+        OR: [
+          {
+            userId: user.id
+          },
+          {
+            project: buildAccessibleProjectWhere(user)
+          }
+        ]
+      };
+
+  const recentInsights = await prisma.activity.findMany({
+    where: activityWhere,
+    orderBy: {
+      activityDate: "desc"
+    },
+    take: 12,
+    select: {
+      id: true,
+      note: true,
+      activityDate: true,
+      projectId: true,
+      project: {
+        select: {
+          id: true,
+          title: true
+        }
+      },
+      analysisMetadata: true
+    }
+  });
+
   const readFirst = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
   const resolvedSearchParams = await Promise.resolve(searchParams);
   const jobId = readFirst(resolvedSearchParams?.jobId);
@@ -113,6 +149,29 @@ export default async function EmailAnalyzerPage({
     : null;
 
   const initialSummary = parseSummary(initialJob?.summary ?? null);
+  const aiRecommendations = recentInsights
+    .map((item) => {
+      const metadata = parseAnalysisMetadata(item.analysisMetadata);
+      if (!metadata) return null;
+
+      return {
+        activityId: item.id,
+        activityDate: item.activityDate.toISOString(),
+        summary: item.note,
+        projectId: item.projectId,
+        projectTitle: item.project?.title ?? null,
+        sentimentScore: metadata.sentimentScore,
+        isUrgent: metadata.isUrgent,
+        suggestedProjectStage: metadata.suggestedProjectStage,
+        suggestedActions: metadata.suggestedActions,
+        followUpQuestions: metadata.followUpQuestions
+      };
+    })
+    .filter(
+      (item): item is NonNullable<typeof item> =>
+        !!item &&
+        (item.suggestedActions.length > 0 || item.followUpQuestions.length > 0 || item.sentimentScore !== null)
+    );
 
   return (
     <Shell
@@ -126,6 +185,7 @@ export default async function EmailAnalyzerPage({
           contacts={contacts}
           analyzeAction={analyzeCommunicationAction}
           initialSummary={initialSummary}
+          aiRecommendations={aiRecommendations}
         />
 
         <Card>

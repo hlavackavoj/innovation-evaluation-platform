@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { ProjectPriority, TaskStatus } from "@prisma/client";
 import { buildAccessibleProjectWhere, canAccessAllProjects, requireCurrentUser } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
 import { runCommunicationAnalysis } from "@/lib/email/analyzer-pipeline";
@@ -146,6 +147,144 @@ export async function deleteOrganizationAction(organizationId: string) {
       id: organizationId
     }
   });
+}
+
+type CreateAiSuggestedTaskInput = {
+  activityId: string;
+  actionType: "SCHEDULE_MEETING" | "DRAFT_RESPONSE";
+  title: string;
+  description?: string;
+  dueDateIso?: string | null;
+};
+
+export async function createTaskFromAiSuggestion(input: CreateAiSuggestedTaskInput) {
+  const user = await requireCurrentUser();
+  const activity = await prisma.activity.findFirst({
+    where: {
+      id: input.activityId,
+      OR: canAccessAllProjects(user)
+        ? undefined
+        : [
+            {
+              userId: user.id
+            },
+            {
+              project: {
+                ownerUserId: user.id
+              }
+            }
+          ]
+    },
+    select: {
+      id: true,
+      projectId: true,
+      note: true
+    }
+  });
+
+  if (!activity) {
+    throw new Error("Activity not found or access denied.");
+  }
+
+  if (!activity.projectId) {
+    throw new Error("Cannot create task from an unlinked email. Assign the email to a project first.");
+  }
+
+  const trimmedTitle = input.title.trim();
+  if (!trimmedTitle) {
+    throw new Error("Task title is required.");
+  }
+
+  const dueDate = input.dueDateIso ? new Date(input.dueDateIso) : null;
+  if (dueDate && Number.isNaN(dueDate.getTime())) {
+    throw new Error("Invalid due date.");
+  }
+
+  const task = await prisma.task.create({
+    data: {
+      projectId: activity.projectId,
+      sourceActivityId: activity.id,
+      title: trimmedTitle,
+      description:
+        input.description?.trim() ||
+        `Created from AI recommendation (${input.actionType}) on imported communication.`,
+      status: TaskStatus.TODO,
+      priority: input.actionType === "SCHEDULE_MEETING" ? ProjectPriority.HIGH : ProjectPriority.MEDIUM,
+      dueDate
+    },
+    select: {
+      id: true
+    }
+  });
+
+  revalidatePath("/email-analyzer");
+  revalidatePath("/tasks");
+  revalidatePath("/");
+  revalidatePath(`/projects/${activity.projectId}`);
+
+  return task;
+}
+
+export async function assignActivityToProjectAction(formData: FormData) {
+  const user = await requireCurrentUser();
+  const activityId = formData.get("activityId")?.toString().trim();
+  const projectId = formData.get("projectId")?.toString().trim();
+
+  if (!activityId || !projectId) {
+    throw new Error("Missing activity or project ID.");
+  }
+
+  const activity = await prisma.activity.findFirst({
+    where: {
+      id: activityId,
+      OR: canAccessAllProjects(user)
+        ? undefined
+        : [
+            {
+              userId: user.id
+            },
+            {
+              project: {
+                ownerUserId: user.id
+              }
+            }
+          ]
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!activity) {
+    throw new Error("Activity not found or access denied.");
+  }
+
+  const targetProject = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      ...buildAccessibleProjectWhere(user)
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!targetProject) {
+    throw new Error("Project not found or access denied.");
+  }
+
+  await prisma.activity.update({
+    where: {
+      id: activityId
+    },
+    data: {
+      projectId: targetProject.id
+    }
+  });
+
+  revalidatePath("/");
+  revalidatePath("/email-analyzer");
+  revalidatePath(`/projects/${targetProject.id}`);
 }
 
 // Backward-compatible aliases for any existing imports.

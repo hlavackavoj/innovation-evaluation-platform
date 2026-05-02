@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
   ActivityType,
   EmailSyncJobStatus,
+  PipelineStage,
   ProjectPriority,
   TaskStatus,
   type Prisma
@@ -20,6 +21,18 @@ type AnalyzerOutput = {
   themes: string[];
   risks: string[];
   nextSteps: Array<{ title: string; dueDays: number }>;
+  sentimentScore: number;
+  isUrgent: boolean;
+  suggestedProjectStage: PipelineStage | null;
+  suggestedActions: Array<{
+    type: "SCHEDULE_MEETING" | "DRAFT_RESPONSE";
+    title: string;
+    description: string;
+    proposedDateTime: string | null;
+    deadline: string | null;
+    dueDays: number | null;
+  }>;
+  followUpQuestions: string[];
 };
 
 function extractDomain(email?: string | null): string | null {
@@ -156,6 +169,24 @@ async function resolveOrCreateContact(email: string, name?: string) {
   };
 }
 
+/**
+ * Finds the most recently updated project linked to a given organization.
+ * Used for automatic email-to-project matching when no explicit project is provided.
+ */
+export async function matchProjectForSender(
+  organizationId: string | null
+): Promise<string | null> {
+  if (!organizationId) return null;
+
+  const project = await prisma.project.findFirst({
+    where: { organizationId },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true }
+  });
+
+  return project?.id ?? null;
+}
+
 async function resolveProjectIdForActivity(
   userId: string,
   explicitProjectId?: string,
@@ -170,23 +201,9 @@ async function resolveProjectIdForActivity(
     return contactProjectIds[0];
   }
 
-  if (organizationId) {
-    const projectByOrg = await prisma.project.findFirst({
-      where: {
-        organizationId,
-        OR: [{ ownerUserId: userId }, { ownerUserId: null }]
-      },
-      orderBy: {
-        updatedAt: "desc"
-      },
-      select: {
-        id: true
-      }
-    });
-
-    if (projectByOrg) {
-      return projectByOrg.id;
-    }
+  const orgMatch = await matchProjectForSender(organizationId ?? null);
+  if (orgMatch) {
+    return orgMatch;
   }
 
   const fallbackProject = await prisma.project.findFirst({
@@ -218,8 +235,67 @@ const OUTPUT_EXAMPLE = {
   summary: "Short factual summary of communication.",
   themes: ["IP", "market validation"],
   risks: ["Missing IP status"],
-  nextSteps: [{ title: "Book startup mentor call", dueDays: 5 }]
+  nextSteps: [{ title: "Book startup mentor call", dueDays: 5 }],
+  sentimentScore: 7,
+  isUrgent: false,
+  suggestedProjectStage: "DISCOVERY",
+  suggestedActions: [
+    {
+      type: "SCHEDULE_MEETING",
+      title: "Schedule intro meeting",
+      description: "Sender requested a meeting this week.",
+      proposedDateTime: "2026-05-05T13:00:00Z",
+      deadline: null,
+      dueDays: 2
+    },
+    {
+      type: "DRAFT_RESPONSE",
+      title: "Draft statement for procurement team",
+      description: "Prepare response with requested compliance statement.",
+      proposedDateTime: null,
+      deadline: "2026-05-07",
+      dueDays: 3
+    }
+  ],
+  followUpQuestions: [
+    "What budget range has been approved for this proposal?",
+    "Who are the decision-makers and what is the target decision date?",
+    "Which pilot scope and success metrics are expected in the first 90 days?"
+  ]
 };
+
+const PIPELINE_STAGES = new Set<PipelineStage>(Object.values(PipelineStage));
+
+function parseDueDays(value: unknown): number | null {
+  const dueDays =
+    typeof value === "number"
+      ? Math.round(value)
+      : typeof value === "string"
+        ? Math.round(Number(value))
+        : NaN;
+
+  if (Number.isNaN(dueDays) || dueDays < 0) return null;
+  return dueDays;
+}
+
+function parseSentimentScore(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? Math.round(value)
+      : typeof value === "string"
+        ? Math.round(Number(value))
+        : NaN;
+
+  if (Number.isNaN(parsed)) return 5;
+  return Math.max(1, Math.min(10, parsed));
+}
+
+function parseSuggestedProjectStage(value: unknown): PipelineStage | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  return PIPELINE_STAGES.has(normalized as PipelineStage) ? (normalized as PipelineStage) : null;
+}
 
 function sanitizeJson(text: string) {
   const trimmed = text.trim();
@@ -256,21 +332,58 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
           .filter((step): step is Record<string, unknown> => !!step && typeof step === "object")
           .map((step) => {
             const title = typeof step.title === "string" ? step.title.trim() : "";
-            const rawDue = step.dueDays;
-            const dueDays =
-              typeof rawDue === "number"
-                ? Math.round(rawDue)
-                : typeof rawDue === "string"
-                  ? Math.round(Number(rawDue))
-                  : NaN;
+            const dueDays = parseDueDays(step.dueDays);
 
-            if (!title || Number.isNaN(dueDays) || dueDays < 0) {
+            if (!title || dueDays === null) {
               return null;
             }
 
             return { title, dueDays };
           })
           .filter((step): step is { title: string; dueDays: number } => !!step)
+      : [];
+    const sentimentScore = parseSentimentScore(value.sentimentScore);
+    const isUrgent = typeof value.isUrgent === "boolean" ? value.isUrgent : false;
+    const suggestedProjectStage = parseSuggestedProjectStage(value.suggestedProjectStage);
+    const suggestedActions = Array.isArray(value.suggestedActions)
+      ? value.suggestedActions
+          .filter((action): action is Record<string, unknown> => !!action && typeof action === "object")
+          .map((action) => {
+            const rawType = typeof action.type === "string" ? action.type.trim().toUpperCase() : "";
+            if (rawType !== "SCHEDULE_MEETING" && rawType !== "DRAFT_RESPONSE") {
+              return null;
+            }
+
+            const title = typeof action.title === "string" ? action.title.trim() : "";
+            if (!title) return null;
+
+            const description = typeof action.description === "string" ? action.description.trim() : "";
+            const proposedDateTime =
+              typeof action.proposedDateTime === "string" ? action.proposedDateTime.trim() || null : null;
+            const deadline = typeof action.deadline === "string" ? action.deadline.trim() || null : null;
+            const dueDays = parseDueDays(action.dueDays);
+
+            return {
+              type: rawType,
+              title,
+              description:
+                description ||
+                (rawType === "SCHEDULE_MEETING"
+                  ? "AI detected a meeting request."
+                  : "AI detected a statement/response request."),
+              proposedDateTime,
+              deadline,
+              dueDays
+            } as AnalyzerOutput["suggestedActions"][number];
+          })
+          .filter((action): action is AnalyzerOutput["suggestedActions"][number] => !!action)
+      : [];
+    const followUpQuestions = Array.isArray(value.followUpQuestions)
+      ? value.followUpQuestions
+          .filter((question): question is string => typeof question === "string")
+          .map((question) => question.trim())
+          .filter(Boolean)
+          .slice(0, 3)
       : [];
 
     if (!summary) {
@@ -281,14 +394,24 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
       summary,
       themes,
       risks,
-      nextSteps
+      nextSteps,
+      sentimentScore,
+      isUrgent,
+      suggestedProjectStage,
+      suggestedActions,
+      followUpQuestions
     };
   } catch {
     return {
       summary: "Analyzer fallback: structured extraction unavailable for this message.",
       themes: [],
       risks: [],
-      nextSteps: []
+      nextSteps: [],
+      sentimentScore: 5,
+      isUrgent: false,
+      suggestedProjectStage: null,
+      suggestedActions: [],
+      followUpQuestions: []
     };
   }
 }
@@ -301,19 +424,38 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
       summary: "Analyzer skipped: GOOGLE_AI_API_KEY is missing.",
       themes: [],
       risks: [],
-      nextSteps: []
+      nextSteps: [],
+      sentimentScore: 5,
+      isUrgent: false,
+      suggestedProjectStage: null,
+      suggestedActions: [],
+      followUpQuestions: []
     };
   }
 
   const client = new GoogleGenerativeAI(apiKey);
   const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const prompt = [
+  const systemPrompt = [
+    "You are an email CRM analyzer. Return strict JSON only.",
+    "Classify and extract action proposals for operations teams.",
+    "Detect these scenarios when present:",
+    "1) Meeting Request: propose action type SCHEDULE_MEETING and include proposedDateTime if available.",
+    "2) Request for Statement: propose action type DRAFT_RESPONSE and include deadline if available.",
+    "3) Project Proposal: provide exactly 3 followUpQuestions that help qualification and CRM intake.",
+    "Metadata requirements:",
+    "- sentimentScore: integer 1-10",
+    "- isUrgent: boolean (true if message implies deadline/time pressure)",
+    "- suggestedProjectStage: one of DISCOVERY, VALIDATION, MVP, SCALING, SPIN_OFF or null",
+    "- suggestedActions: array of objects with fields type, title, description, proposedDateTime, deadline, dueDays"
+  ].join("\n");
+  const userPrompt = [
     "Analyze CRM communication and return strict JSON.",
-    "Extract themes, risks, and actionable next steps.",
+    "Extract themes, risks, actionable next steps, and suggested actions metadata.",
     JSON.stringify(OUTPUT_EXAMPLE),
     `Subject: ${subject}`,
     `Body: ${bodyText}`
   ].join("\n\n");
+  const prompt = [systemPrompt, userPrompt].join("\n\n");
 
   const response = await model.generateContent({
     generationConfig: {
@@ -501,6 +643,19 @@ async function processEmailMessageForEnrichment(
   for (const risk of data.risks) context.risks.add(risk);
   for (const step of data.nextSteps) context.nextSteps.add(step.title);
 
+  const analysisMetadata: Prisma.InputJsonValue = {
+    themes: data.themes,
+    risks: data.risks,
+    direction,
+    autoMatchedByOrganization: !context.projectId && !!senderOrganizationId,
+    sentimentScore: data.sentimentScore,
+    isUrgent: data.isUrgent,
+    suggestedProjectStage: data.suggestedProjectStage,
+    suggestedActions: data.suggestedActions,
+    followUpQuestions: data.followUpQuestions,
+    processedAt: new Date().toISOString()
+  };
+
   const activity = await prisma.activity.upsert({
     where: {
       emailMessageId: persistedMessage.providerMessageId
@@ -510,15 +665,19 @@ async function processEmailMessageForEnrichment(
       userId: context.userId,
       type: ActivityType.EMAIL,
       note: data.summary,
+      bodyContent: message.bodyText ?? null,
       emailMessageId: persistedMessage.providerMessageId,
       emailParentId: persistedMessage.providerParentMessageId,
       aiAnalysis: data as Prisma.InputJsonValue,
+      analysisMetadata,
       activityDate: persistedMessage.sentAt
     },
     update: {
       note: data.summary,
+      bodyContent: message.bodyText ?? null,
       emailParentId: persistedMessage.providerParentMessageId,
       aiAnalysis: data as Prisma.InputJsonValue,
+      analysisMetadata,
       activityDate: persistedMessage.sentAt
     }
   });

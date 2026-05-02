@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { type ProjectPriority } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { deleteContact, deleteOrganizationAction, deleteTask } from "@/app/email-analyzer/actions";
+import { createTaskFromAiSuggestion, deleteContact, deleteOrganizationAction, deleteTask } from "@/app/email-analyzer/actions";
 import { useRouter } from "next/navigation";
+import type { SuggestedAction } from "@/lib/email/analysis-metadata";
 
 type SelectItem = { id: string; title: string };
 type SelectContactItem = { id: string; name: string; email: string | null };
@@ -40,24 +41,42 @@ type TestApiResponse = {
   };
 };
 
+type AiRecommendation = {
+  activityId: string;
+  activityDate: string;
+  summary: string;
+  projectId: string | null;
+  projectTitle: string | null;
+  sentimentScore: number | null;
+  isUrgent: boolean;
+  suggestedProjectStage: string | null;
+  suggestedActions: SuggestedAction[];
+  followUpQuestions: string[];
+};
+
 export function EnrichmentPanel({
   projects,
   contacts,
   analyzeAction,
-  initialSummary
+  initialSummary,
+  aiRecommendations
 }: {
   projects: SelectItem[];
   contacts: SelectContactItem[];
   analyzeAction: (formData: FormData) => Promise<AnalysisResult>;
   initialSummary: AnalysisResult | null;
+  aiRecommendations: AiRecommendation[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
+  const [isSavingRecommendationTask, startSaveRecommendationTaskTransition] = useTransition();
   const [useTestData, setUseTestData] = useState(false);
   const [summary, setSummary] = useState<AnalysisResult | null>(initialSummary);
   const [testError, setTestError] = useState<string | null>(null);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+  const [recommendationMessage, setRecommendationMessage] = useState<string | null>(null);
+  const [copiedQuestion, setCopiedQuestion] = useState<string | null>(null);
   const [feed, setFeed] = useState<CreatedEntities>(
     initialSummary?.createdEntities ?? { contacts: [], tasks: [], organizations: [] }
   );
@@ -66,6 +85,39 @@ export function EnrichmentPanel({
     () => !!summary && (summary.importedEmails > 0 || feed.contacts.length > 0 || feed.tasks.length > 0 || feed.organizations.length > 0),
     [feed.contacts.length, feed.organizations.length, feed.tasks.length, summary]
   );
+
+  const hasAiRecommendations = aiRecommendations.length > 0;
+
+  const getSentimentStyle = (score: number | null) => {
+    if (score === null) return "border-zinc-200 bg-white";
+    if (score < 4) return "border-rose-200 bg-rose-50";
+    if (score < 7) return "border-amber-200 bg-amber-50";
+    return "border-emerald-200 bg-emerald-50";
+  };
+
+  const resolveDueDateIso = (action: SuggestedAction) => {
+    if (action.proposedDateTime) {
+      const proposed = new Date(action.proposedDateTime);
+      if (!Number.isNaN(proposed.getTime())) {
+        return proposed.toISOString();
+      }
+    }
+
+    if (action.deadline) {
+      const deadline = new Date(action.deadline);
+      if (!Number.isNaN(deadline.getTime())) {
+        return deadline.toISOString();
+      }
+    }
+
+    if (typeof action.dueDays === "number") {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + action.dueDays);
+      return dueDate.toISOString();
+    }
+
+    return null;
+  };
 
   const runAnalysis = (formData: FormData) => {
     startTransition(async () => {
@@ -128,6 +180,38 @@ export function EnrichmentPanel({
       }
       router.refresh();
     });
+  };
+
+  const saveSuggestedActionAsTask = (recommendation: AiRecommendation, action: SuggestedAction) => {
+    if (!recommendation.projectId) return;
+
+    startSaveRecommendationTaskTransition(async () => {
+      try {
+        setRecommendationMessage(null);
+        await createTaskFromAiSuggestion({
+          activityId: recommendation.activityId,
+          actionType: action.type,
+          title: action.title,
+          description: action.description,
+          dueDateIso: resolveDueDateIso(action)
+        });
+        setRecommendationMessage(`Úkol "${action.title}" byl uložen do Tasks.`);
+        router.refresh();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Nepodařilo se uložit doporučený úkol.";
+        setRecommendationMessage(message);
+      }
+    });
+  };
+
+  const copyQuestion = async (question: string) => {
+    try {
+      await navigator.clipboard.writeText(question);
+      setCopiedQuestion(question);
+      window.setTimeout(() => setCopiedQuestion((prev) => (prev === question ? null : prev)), 1800);
+    } catch {
+      setCopiedQuestion(null);
+    }
   };
 
   return (
@@ -231,6 +315,104 @@ export function EnrichmentPanel({
           )}
         </CardContent>
       </Card>
+
+      {hasAiRecommendations && (
+        <section className="space-y-3">
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+            <h3 className="text-sm font-semibold text-zinc-900">AI Doporučení</h3>
+            <p className="text-xs text-zinc-600">Doporučení z `analysisMetadata` uložených v databázi.</p>
+          </div>
+
+          {recommendationMessage && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+              {recommendationMessage}
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {aiRecommendations.map((recommendation) => (
+              <div
+                key={recommendation.activityId}
+                className={`rounded-lg border p-3 ${getSentimentStyle(recommendation.sentimentScore)}`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-zinc-500">
+                      {new Date(recommendation.activityDate).toLocaleString("cs-CZ")}
+                    </p>
+                    <p className="line-clamp-2 text-sm text-zinc-800">{recommendation.summary}</p>
+                    <p className="mt-1 text-xs text-zinc-600">
+                      Projekt:{" "}
+                      {recommendation.projectId ? (
+                        <Link
+                          href={`/projects/${recommendation.projectId}`}
+                          className="font-medium text-indigo-600 hover:text-indigo-700"
+                        >
+                          {recommendation.projectTitle ?? "Otevřít projekt"}
+                        </Link>
+                      ) : (
+                        "Unlinked"
+                      )}
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-zinc-600">
+                    <p>Sentiment: {recommendation.sentimentScore ?? "N/A"}/10</p>
+                    <p>Urgent: {recommendation.isUrgent ? "Yes" : "No"}</p>
+                    <p>Stage: {recommendation.suggestedProjectStage ?? "N/A"}</p>
+                  </div>
+                </div>
+
+                {recommendation.suggestedActions.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {recommendation.suggestedActions.map((action, index) => (
+                      <div key={`${recommendation.activityId}-${action.type}-${index}`} className="rounded-md border border-zinc-200 bg-white p-2">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-zinc-900">{action.title}</p>
+                            <p className="text-xs text-zinc-600">{action.description}</p>
+                            {action.proposedDateTime && (
+                              <p className="text-xs text-zinc-500">Navržený termín: {action.proposedDateTime}</p>
+                            )}
+                            {action.deadline && <p className="text-xs text-zinc-500">Deadline: {action.deadline}</p>}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!recommendation.projectId || isSavingRecommendationTask}
+                            onClick={() => saveSuggestedActionAsTask(recommendation, action)}
+                          >
+                            {isSavingRecommendationTask ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Uložit do Task
+                          </Button>
+                        </div>
+                        {!recommendation.projectId && (
+                          <p className="mt-1 text-xs text-amber-700">Nejdříve přiřaď e-mail projektu (Unlinked).</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {recommendation.followUpQuestions.length > 0 && (
+                  <div className="mt-3 space-y-2 rounded-md border border-zinc-200 bg-white p-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600">Follow-up otázky</p>
+                    {recommendation.followUpQuestions.map((question, index) => (
+                      <div key={`${recommendation.activityId}-q-${index}`} className="flex items-start justify-between gap-2">
+                        <p className="text-sm text-zinc-800">{question}</p>
+                        <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => copyQuestion(question)}>
+                          {copiedQuestion === question ? <Check className="mr-1 h-4 w-4" /> : <Copy className="mr-1 h-4 w-4" />}
+                          {copiedQuestion === question ? "Zkopírováno" : "Kopírovat"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {hasResults && (
         <section className="space-y-3">

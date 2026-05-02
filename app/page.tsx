@@ -138,12 +138,16 @@ export default async function DashboardPage({
                         <time className="shrink-0 text-xs text-zinc-400">{formatDate(activity.activityDate)}</time>
                       </div>
                       <p className="mt-0.5 text-xs text-zinc-500">
-                        <Link
-                          href={`/projects/${activity.project.id}`}
-                          className="font-medium text-indigo-600 hover:text-indigo-700"
-                        >
-                          {activity.project.title}
-                        </Link>
+                        {activity.project ? (
+                          <Link
+                            href={`/projects/${activity.project.id}`}
+                            className="font-medium text-indigo-600 hover:text-indigo-700"
+                          >
+                            {activity.project.title}
+                          </Link>
+                        ) : (
+                          <span className="text-zinc-400">Unlinked</span>
+                        )}
                         {" · "}
                         {activity.user?.name ?? "System"}
                       </p>
