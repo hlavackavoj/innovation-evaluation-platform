@@ -87,6 +87,7 @@ export function EnrichmentPanel({
   );
 
   const hasAiRecommendations = aiRecommendations.length > 0;
+  const contactActionItems = (summary?.matchedContacts ?? 0) + (summary?.suggestedContacts ?? 0);
 
   const getSentimentStyle = (score: number | null) => {
     if (score === null) return "border-zinc-200 bg-white";
@@ -305,7 +306,13 @@ export function EnrichmentPanel({
               <p>Imported emails: <strong>{summary.importedEmails}</strong></p>
               <p>Matched contacts: <strong>{summary.matchedContacts}</strong></p>
               <p>Suggested new contacts: <strong>{summary.suggestedContacts}</strong></p>
+              <p>Contact actions to review: <strong>{contactActionItems}</strong></p>
               <p>Generated tasks: <strong>{summary.generatedTasks}</strong></p>
+              {summary.suggestedContacts > 0 && (
+                <p className="mt-1 text-amber-700">
+                  Suggested contacts need review and project linking in the Enrichment Results section.
+                </p>
+              )}
               {summary.importedEmails === 0 && (
                 <p className="mt-2 text-zinc-600">
                   No emails matched the current filters. Try removing contact filter or widening date range.

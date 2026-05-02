@@ -708,7 +708,11 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
       suggestedActions,
       followUpQuestions
     };
-  } catch {
+  } catch (error) {
+    console.error("parseAnalyzerOutput failed, using fallback", {
+      error: error instanceof Error ? error.message : String(error),
+      raw: raw.slice(0, 500)
+    });
     return {
       summary: "Analyzer fallback: structured extraction unavailable for this message.",
       intentCategory: "ADMIN",
@@ -975,6 +979,15 @@ async function processEmailMessageForEnrichment(
     followUpQuestions: data.followUpQuestions,
     processedAt: new Date().toISOString()
   };
+  console.log("[email-enrichment] Persisting analysisMetadata", {
+    providerMessageId: message.providerMessageId,
+    projectIdForActivity,
+    analysisMetadata
+  });
+
+  const generatedTaskCandidates =
+    data.nextSteps.length > 0 ? data.nextSteps.length : data.suggestedActions.length;
+  context.stats.generatedTasks += generatedTaskCandidates;
 
   const activity = await prisma.activity.upsert({
     where: {
@@ -1028,7 +1041,6 @@ async function processEmailMessageForEnrichment(
       contactName: sender?.name?.trim() || null
     });
 
-    context.stats.generatedTasks += 1;
   }
 }
 
