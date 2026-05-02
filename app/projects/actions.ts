@@ -5,9 +5,9 @@ import { redirect } from "next/navigation";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ActivityType, PipelineStage, ProjectPriority, RecommendationStatus, TaskStatus, type Prisma } from "@prisma/client";
 import {
-  assertCanManageAdministrativeRecords,
-  assertCanManageRecords,
   requireCurrentUser,
+  requireCanManageTemplates,
+  requireCanModifyCrmRecords,
   requireProjectAccess
 } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
@@ -131,7 +131,7 @@ function parseCommunicationAiResult(raw: string): CommunicationAiResult {
 
 export async function createProjectAction(formData: FormData) {
   const user = await requireCurrentUser();
-  assertCanManageRecords(user);
+  await requireCanModifyCrmRecords();
   const data = parseProjectFormData(formData);
 
   const project = await prisma.project.create({
@@ -275,8 +275,8 @@ export async function addProjectDocumentAction(projectId: string, formData: Form
 }
 
 export async function createTemplateAction(formData: FormData) {
-  const user = await requireCurrentUser();
-  assertCanManageAdministrativeRecords(user);
+  await requireCurrentUser();
+  await requireCanManageTemplates();
   const name = formData.get("name")?.toString().trim();
   const description = formData.get("description")?.toString().trim();
   const fileInput = formData.get("file");

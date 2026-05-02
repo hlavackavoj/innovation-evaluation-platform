@@ -4,9 +4,9 @@ import { OrganizationType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  assertCanManageRecords,
   buildAccessibleProjectWhere,
   canAccessAllProjects,
+  requireCanModifyCrmRecords,
   requireCurrentUser
 } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +17,7 @@ function getOptionalString(formData: FormData, name: string) {
 
 export async function createOrganizationAction(formData: FormData) {
   const user = await requireCurrentUser();
-  assertCanManageRecords(user);
+  await requireCanModifyCrmRecords();
 
   const name = formData.get("name")?.toString().trim();
   const type = formData.get("type") as OrganizationType | null;
@@ -42,7 +42,7 @@ export async function createOrganizationAction(formData: FormData) {
 
 export async function updateOrganizationAction(organizationId: string, formData: FormData) {
   const user = await requireCurrentUser();
-  assertCanManageRecords(user);
+  await requireCanModifyCrmRecords();
 
   const name = formData.get("name")?.toString().trim();
   const type = formData.get("type") as OrganizationType | null;

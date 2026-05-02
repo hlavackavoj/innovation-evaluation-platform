@@ -1,6 +1,7 @@
 import type { Prisma, User } from "@prisma/client";
 import { UserRole } from "@prisma/client";
 import { ensureUserInDb } from "@/lib/auth";
+import { checkCrmPermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/prisma";
 
 export class AuthorizationError extends Error {}
@@ -43,8 +44,11 @@ export function buildAccessibleProjectWhere(user: ProjectScopeContext): Prisma.P
 export async function requireProjectAccess(projectId: string, options?: { write?: boolean }) {
   const user = await requireCurrentUser();
 
-  if (options?.write && !canManageRecords(user)) {
-    throw new AuthorizationError("You do not have permission to modify CRM records.");
+  if (options?.write) {
+    const permission = await checkCrmPermission("crm:modify");
+    if (!permission.allowed) {
+      throw new AuthorizationError("You do not have permission to modify CRM records.");
+    }
   }
 
   const project = await prisma.project.findFirst({
@@ -71,4 +75,20 @@ export function assertCanManageAdministrativeRecords(user: UserRoleContext) {
   if (!canManageAdministrativeRecords(user)) {
     throw new AuthorizationError("You do not have permission to manage templates.");
   }
+}
+
+export async function requireCanModifyCrmRecords() {
+  const permission = await checkCrmPermission("crm:modify");
+  if (!permission.allowed) {
+    throw new AuthorizationError("You do not have permission to modify CRM records.");
+  }
+  return permission;
+}
+
+export async function requireCanManageTemplates() {
+  const permission = await checkCrmPermission("crm:manage_templates");
+  if (!permission.allowed) {
+    throw new AuthorizationError("You do not have permission to manage templates.");
+  }
+  return permission;
 }

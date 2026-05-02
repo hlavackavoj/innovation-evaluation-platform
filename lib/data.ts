@@ -1,7 +1,6 @@
 import { RecommendationStatus, TaskStatus } from "@prisma/client";
 import { notFound } from "next/navigation";
 import {
-  assertCanManageRecords,
   buildAccessibleProjectWhere,
   canAccessAllProjects,
   requireCurrentUser
@@ -475,7 +474,6 @@ export async function getTasks() {
 
 export async function getProjectFormData() {
   const user = await requireCurrentUser();
-  assertCanManageRecords(user);
 
   const [organizations, users] = await Promise.all([
     prisma.organization.findMany({

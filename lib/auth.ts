@@ -29,7 +29,7 @@ function collectRoleKeys(value: unknown): string[] {
 function resolveRoleFromSources(...sources: unknown[]): UserRole {
   const roleKeys = [...new Set(sources.flatMap((source) => collectRoleKeys(source)))];
 
-  if (roleKeys.some((key) => key.includes("admin"))) {
+  if (roleKeys.some((key) => key.includes("owner") || key.includes("admin"))) {
     return "ADMIN";
   }
 
@@ -42,6 +42,26 @@ function resolveRoleFromSources(...sources: unknown[]): UserRole {
   }
 
   return "VIEWER";
+}
+
+function roleRank(role: UserRole): number {
+  switch (role) {
+    case "ADMIN":
+      return 5;
+    case "MANAGER":
+      return 4;
+    case "EVALUATOR":
+      return 3;
+    case "USER":
+      return 2;
+    case "VIEWER":
+    default:
+      return 1;
+  }
+}
+
+function resolveHighestRole(...roles: UserRole[]): UserRole {
+  return roles.reduce((best, current) => (roleRank(current) > roleRank(best) ? current : best), "VIEWER");
 }
 
 function resolveBootstrapAdminRole(email: string, currentRole: UserRole): UserRole {
@@ -96,7 +116,12 @@ export async function ensureUserInDb() {
   const firstName = kindeUser?.given_name?.trim() ?? "";
   const lastName = kindeUser?.family_name?.trim() ?? "";
   const mappedRole = resolveRoleFromSources(kindeRoles, rolesClaim?.value);
-  const dbRole = resolveBootstrapAdminRole(email, mappedRole);
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+    select: { role: true }
+  });
+  const mergedRole = resolveHighestRole(existingUser?.role ?? "VIEWER", mappedRole);
+  const dbRole = resolveBootstrapAdminRole(email, mergedRole);
   const fallbackName = kindeUser?.email?.split("@")[0] ?? "Kinde User";
   const resolvedName = `${firstName} ${lastName}`.trim() || kindeUser?.username || fallbackName;
 
