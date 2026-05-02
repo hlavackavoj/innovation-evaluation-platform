@@ -20,7 +20,7 @@ export async function getDashboardData() {
   const projectWhere = buildAccessibleProjectWhere(user);
   const taskWhere = canAccessAllProjects(user) ? {} : { project: projectWhere };
   const activityWhere = canAccessAllProjects(user) ? {} : { project: projectWhere };
-  const [totalProjects, pendingTasks, projectsByStageRaw, recentActivities] = await Promise.all([
+  const [totalProjects, pendingTasks, projectsByStageRaw, recentActivities, assignableProjects] = await Promise.all([
     prisma.project.count({ where: projectWhere }),
     prisma.task.count({
       where: {
@@ -50,6 +50,16 @@ export async function getDashboardData() {
         project: true,
         user: true
       }
+    }),
+    prisma.project.findMany({
+      where: projectWhere,
+      orderBy: {
+        title: "asc"
+      },
+      select: {
+        id: true,
+        title: true
+      }
     })
   ]);
 
@@ -69,7 +79,8 @@ export async function getDashboardData() {
       { label: "Pending Tasks", value: pendingTasks, accent: "bg-rose-100 text-rose-700" }
     ],
     projectsByStage,
-    recentActivities
+    recentActivities,
+    assignableProjects
   };
 }
 

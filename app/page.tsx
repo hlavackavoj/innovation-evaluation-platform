@@ -7,6 +7,8 @@ import { Shell } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
 import { getDashboardData } from "@/lib/data";
 import { formatDate, formatEnumLabel } from "@/lib/format";
+import { parseAnalysisMetadata } from "@/lib/email/analysis-metadata";
+import { assignActivityToProjectAction } from "@/app/email-analyzer/actions";
 
 const statIcons: Record<string, LucideIcon> = {
   "Total Projects": FolderKanban,
@@ -30,7 +32,7 @@ export default async function DashboardPage({
     redirect("/login?callbackUrl=/");
   }
 
-  const { stats, projectsByStage, recentActivities } = await getDashboardData();
+  const { stats, projectsByStage, recentActivities, assignableProjects } = await getDashboardData();
 
   const showPendingApproval = searchParams?.pending_approval === "1";
 
@@ -151,6 +153,51 @@ export default async function DashboardPage({
                         {" · "}
                         {activity.user?.name ?? "System"}
                       </p>
+                      {(() => {
+                        const metadata = parseAnalysisMetadata(activity.analysisMetadata);
+                        if (!metadata) return null;
+                        return (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
+                              Sentiment {metadata.sentimentScore ?? "N/A"}/10
+                            </span>
+                            <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
+                              Urgent {metadata.isUrgent ? "yes" : "no"}
+                            </span>
+                            {metadata.suggestedProjectStage && (
+                              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+                                {metadata.suggestedProjectStage}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {!activity.project && activity.type === "EMAIL" && (
+                        <form action={assignActivityToProjectAction} className="mt-2 flex items-center gap-2">
+                          <input type="hidden" name="activityId" value={activity.id} />
+                          <select
+                            name="projectId"
+                            defaultValue=""
+                            className="h-8 min-w-[170px] rounded-md border border-zinc-200 bg-white px-2 text-xs text-zinc-700"
+                            required
+                          >
+                            <option value="" disabled>
+                              Přiřadit k projektu
+                            </option>
+                            {assignableProjects.map((project) => (
+                              <option key={project.id} value={project.id}>
+                                {project.title}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="submit"
+                            className="h-8 rounded-md border border-zinc-200 px-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                          >
+                            Uložit
+                          </button>
+                        </form>
+                      )}
                       {activity.note && (
                         <p className="mt-1.5 line-clamp-2 text-xs text-zinc-500">{activity.note}</p>
                       )}
