@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
-import { FolderKanban, ClipboardList, ArrowRight, Activity, type LucideIcon } from "lucide-react";
+import { AlertTriangle, FolderKanban, ClipboardList, ArrowRight, Activity, Target, type LucideIcon } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Shell } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
@@ -11,13 +11,13 @@ import { parseAnalysisMetadata } from "@/lib/email/analysis-metadata";
 import { assignActivityToProjectAction } from "@/app/email-analyzer/actions";
 
 const statIcons: Record<string, LucideIcon> = {
-  "Total Projects": FolderKanban,
-  "Pending Tasks": ClipboardList
+  "Výzkumné projekty": FolderKanban,
+  "Čekající milníky": ClipboardList
 };
 
 const statColors: Record<string, { bg: string; icon: string }> = {
-  "Total Projects": { bg: "bg-indigo-50", icon: "text-indigo-600" },
-  "Pending Tasks": { bg: "bg-rose-50", icon: "text-rose-600" }
+  "Výzkumné projekty": { bg: "bg-indigo-50", icon: "text-indigo-600" },
+  "Čekající milníky": { bg: "bg-rose-50", icon: "text-rose-600" }
 };
 
 export default async function DashboardPage({
@@ -32,14 +32,14 @@ export default async function DashboardPage({
     redirect("/login?callbackUrl=/");
   }
 
-  const { stats, projectsByStage, recentActivities, assignableProjects } = await getDashboardData();
+  const { stats, projectsByStage, recentActivities, assignableProjects, urgentTasks } = await getDashboardData();
 
   const showPendingApproval = searchParams?.pending_approval === "1";
 
   return (
     <Shell
       title="Dashboard"
-      description="Portfolio flow, pending follow-up, and the latest activity across your innovation pipeline."
+      description="Přehled inovačního portfolia, čekající milníky a poslední komunikace s výzkumnými partnery."
       actions={
         <Link href="/projects/new" className={buttonVariants({})}>
           New project
@@ -71,12 +71,56 @@ export default async function DashboardPage({
         })}
       </div>
 
+      {/* Urgentní milníky */}
+      {urgentTasks.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 shadow-sm">
+          <div className="border-b border-amber-100 p-5">
+            <p className="text-sm font-semibold text-zinc-900">Výzkumné milníky — Čekající akce</p>
+            <p className="mt-0.5 text-xs text-zinc-500">Úkoly s vysokou prioritou vyžadující pozornost.</p>
+          </div>
+          <div className="divide-y divide-amber-100">
+            {urgentTasks.map((task) => {
+              const isUrgent = task.priority === "URGENT";
+              return (
+                <div key={task.id} className="flex items-start gap-3 px-5 py-3.5">
+                  <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${isUrgent ? "bg-rose-100" : "bg-amber-100"}`}>
+                    {isUrgent
+                      ? <AlertTriangle size={11} className="text-rose-600" />
+                      : <Target size={11} className="text-amber-600" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <Link
+                        href={`/tasks/${task.id}`}
+                        className="text-sm font-medium text-zinc-900 hover:text-indigo-600"
+                      >
+                        {task.title}
+                      </Link>
+                      {task.dueDate && (
+                        <time className="shrink-0 text-xs text-zinc-400">{formatDate(task.dueDate)}</time>
+                      )}
+                    </div>
+                    {task.project && (
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        <Link href={`/projects/${task.project.id}`} className="font-medium text-indigo-600 hover:text-indigo-700">
+                          {task.project.title}
+                        </Link>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-[1.1fr,0.9fr]">
-        {/* Pipeline distribution */}
+        {/* Fáze výzkumného portfolia */}
         <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-100 p-5">
-            <p className="text-sm font-semibold text-zinc-900">Projects by Stage</p>
-            <p className="mt-0.5 text-xs text-zinc-500">Portfolio distribution across the innovation pipeline.</p>
+            <p className="text-sm font-semibold text-zinc-900">Fáze výzkumného portfolia</p>
+            <p className="mt-0.5 text-xs text-zinc-500">Rozložení projektů v inovačním portfoliu.</p>
           </div>
           <div className="divide-y divide-zinc-100">
             {projectsByStage.map((item) => (
@@ -101,8 +145,8 @@ export default async function DashboardPage({
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100">
                   <FolderKanban size={18} className="text-zinc-400" />
                 </div>
-                <p className="mt-3 text-sm font-medium text-zinc-600">No projects yet</p>
-                <p className="mt-1 text-xs text-zinc-400">Create your first project to see pipeline data.</p>
+                <p className="mt-3 text-sm font-medium text-zinc-600">Žádné projekty</p>
+                <p className="mt-1 text-xs text-zinc-400">Vytvořte první projekt pro zobrazení portfolia.</p>
                 <Link href="/projects/new" className={buttonVariants({ size: "sm", className: "mt-4" })}>
                   Create project
                 </Link>
@@ -111,12 +155,12 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        {/* Activity feed */}
+        {/* Poslední komunikace */}
         <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-zinc-100 p-5">
             <div>
-              <p className="text-sm font-semibold text-zinc-900">Recent Activity</p>
-              <p className="mt-0.5 text-xs text-zinc-500">Latest project touchpoints.</p>
+              <p className="text-sm font-semibold text-zinc-900">Poslední komunikace</p>
+              <p className="mt-0.5 text-xs text-zinc-500">Poslední aktivita v projektech.</p>
             </div>
             <Link
               href="/projects"
@@ -211,8 +255,8 @@ export default async function DashboardPage({
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100">
                 <Activity size={18} className="text-zinc-400" />
               </div>
-              <p className="mt-3 text-sm font-medium text-zinc-600">No activity yet</p>
-              <p className="mt-1 text-xs text-zinc-400">Activity will appear here as your projects progress.</p>
+              <p className="mt-3 text-sm font-medium text-zinc-600">Zatím žádná komunikace</p>
+              <p className="mt-1 text-xs text-zinc-400">Aktivita se zobrazí po přiřazení komunikace k projektům.</p>
             </div>
           )}
         </div>

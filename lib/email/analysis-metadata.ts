@@ -12,12 +12,21 @@ export type SuggestedAction = {
   dueDays: number | null;
 };
 
+export type CalendarProposal = {
+  actionType: SuggestedActionType;
+  title: string;
+  proposedDateTimeIso: string | null;
+  allDayDateIso: string | null;
+  timezone: string;
+};
+
 export type ParsedAnalysisMetadata = {
   sentimentScore: number | null;
   isUrgent: boolean;
   suggestedProjectStage: PipelineStage | null;
   suggestedUniversityPhase: UniversityPhaseSuggestion | null;
   meetingDatetimes: string[];
+  calendarProposals: CalendarProposal[];
   suggestedActions: SuggestedAction[];
   followUpQuestions: string[];
 };
@@ -129,6 +138,39 @@ function parseSuggestedActions(value: unknown): SuggestedAction[] {
     .filter((item): item is SuggestedAction => !!item);
 }
 
+function parseCalendarProposals(value: unknown): CalendarProposal[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const row = asRecord(item);
+      if (!row) return null;
+      const actionType =
+        typeof row.actionType === "string" &&
+        (row.actionType === "SCHEDULE_MEETING" || row.actionType === "DRAFT_RESPONSE")
+          ? (row.actionType as SuggestedActionType)
+          : null;
+      if (!actionType) return null;
+      const title = typeof row.title === "string" ? row.title.trim() : "";
+      const proposedDateTimeIso =
+        typeof row.proposedDateTimeIso === "string" && row.proposedDateTimeIso.trim()
+          ? row.proposedDateTimeIso.trim()
+          : null;
+      const allDayDateIso =
+        typeof row.allDayDateIso === "string" && row.allDayDateIso.trim()
+          ? row.allDayDateIso.trim()
+          : null;
+      if (!proposedDateTimeIso && !allDayDateIso) return null;
+      return {
+        actionType,
+        title: title || "Navržená schůzka",
+        proposedDateTimeIso,
+        allDayDateIso,
+        timezone: typeof row.timezone === "string" ? row.timezone : "UTC"
+      } satisfies CalendarProposal;
+    })
+    .filter((item): item is CalendarProposal => !!item);
+}
+
 function parseFollowUpQuestions(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -148,6 +190,7 @@ export function parseAnalysisMetadata(value: unknown): ParsedAnalysisMetadata | 
     suggestedProjectStage: parseSuggestedProjectStage(data.suggestedProjectStage),
     suggestedUniversityPhase: parseSuggestedUniversityPhase(data.suggestedUniversityPhase),
     meetingDatetimes: parseMeetingDatetimes(data.meetingDatetimes),
+    calendarProposals: parseCalendarProposals(data.calendarProposals),
     suggestedActions: parseSuggestedActions(data.suggestedActions),
     followUpQuestions: parseFollowUpQuestions(data.followUpQuestions)
   };

@@ -101,7 +101,7 @@ export async function getDashboardData() {
   const projectWhere = buildAccessibleProjectWhere(user);
   const taskWhere = canAccessAllProjects(user) ? {} : { project: projectWhere };
   const activityWhere = canAccessAllProjects(user) ? {} : { project: projectWhere };
-  const [totalProjects, pendingTasks, projectsByStageRaw, recentActivities, assignableProjects] = await Promise.all([
+  const [totalProjects, pendingTasks, projectsByStageRaw, recentActivities, assignableProjects, urgentTasks] = await Promise.all([
     prisma.project.count({ where: projectWhere }),
     prisma.task.count({
       where: {
@@ -131,6 +131,22 @@ export async function getDashboardData() {
         id: true,
         title: true
       }
+    }),
+    prisma.task.findMany({
+      where: {
+        ...taskWhere,
+        priority: { in: ["URGENT", "HIGH"] },
+        status: { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] }
+      },
+      orderBy: [{ priority: "desc" }, { dueDate: "asc" }],
+      take: 6,
+      select: {
+        id: true,
+        title: true,
+        priority: true,
+        dueDate: true,
+        project: { select: { id: true, title: true } }
+      }
     })
   ]);
 
@@ -146,12 +162,13 @@ export async function getDashboardData() {
 
   return {
     stats: [
-      { label: "Total Projects", value: totalProjects, accent: "bg-teal-100 text-teal-800" },
-      { label: "Pending Tasks", value: pendingTasks, accent: "bg-rose-100 text-rose-700" }
+      { label: "Výzkumné projekty", value: totalProjects, accent: "bg-teal-100 text-teal-800" },
+      { label: "Čekající milníky", value: pendingTasks, accent: "bg-rose-100 text-rose-700" }
     ],
     projectsByStage,
     recentActivities,
-    assignableProjects
+    assignableProjects,
+    urgentTasks
   };
 }
 

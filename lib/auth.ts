@@ -27,7 +27,7 @@ function collectRoleKeys(value: unknown): string[] {
   return [];
 }
 
-function resolveRoleFromSources(...sources: unknown[]): UserRole {
+export function resolveRoleFromSources(...sources: unknown[]): UserRole {
   const roleKeys = [...new Set(sources.flatMap((source) => collectRoleKeys(source)))];
 
   if (roleKeys.some((key) => key.includes("owner") || key.includes("admin"))) {
@@ -45,7 +45,7 @@ function resolveRoleFromSources(...sources: unknown[]): UserRole {
   return "VIEWER";
 }
 
-function resolveBootstrapAdminRole(email: string, currentRole: UserRole): UserRole {
+export function resolveBootstrapAdminRole(email: string, currentRole: UserRole): UserRole {
   if (currentRole === "ADMIN") {
     return currentRole;
   }

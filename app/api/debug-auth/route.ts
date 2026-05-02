@@ -1,6 +1,7 @@
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolveRoleFromSources, resolveBootstrapAdminRole } from "@/lib/auth";
 
 export async function GET() {
   const { getUser, getRoles, getClaim } = getKindeServerSession();
@@ -14,23 +15,25 @@ export async function GET() {
 
   if (!email) {
     return NextResponse.json(
-      {
-        authenticated: false,
-        error: "No authenticated user email in session."
-      },
+      { authenticated: false, error: "No authenticated user email in session." },
       { status: 401 }
     );
   }
 
   const dbUser = await prisma.user.findUnique({
     where: { email },
-    select: {
-      id: true,
-      email: true,
-      role: true,
-      updatedAt: true
-    }
+    select: { id: true, email: true, role: true, updatedAt: true }
   });
+
+  if (!dbUser || dbUser.role !== "ADMIN") {
+    return NextResponse.json(
+      { error: "Forbidden. ADMIN role required." },
+      { status: 403 }
+    );
+  }
+
+  const mappedFromKinde = resolveRoleFromSources(kindeRoles, rolesClaim?.value);
+  const resolvedDbRole = resolveBootstrapAdminRole(email, mappedFromKinde);
 
   return NextResponse.json({
     authenticated: true,
@@ -43,6 +46,11 @@ export async function GET() {
     kinde: {
       rolesFromGetRoles: kindeRoles ?? null,
       rolesClaimFromIdToken: rolesClaim?.value ?? null
+    },
+    mappingTrace: {
+      mappedFromKinde,
+      bootstrapAdminMatch: resolvedDbRole !== mappedFromKinde,
+      resolvedDbRole
     },
     dbUser
   });

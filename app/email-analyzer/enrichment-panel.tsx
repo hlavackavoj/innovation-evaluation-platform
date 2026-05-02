@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Check, Copy, Loader2, Pencil, Trash2 } from "lucide-react";
+import { CalendarDays, Check, Copy, Loader2, Pencil, Trash2 } from "lucide-react";
 import { ProjectPriority } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { acceptSuggestedTaskAction, createTaskFromAiSuggestion, deleteContact, deleteOrganizationAction, deleteTask } from "@/app/email-analyzer/actions";
 import { useRouter } from "next/navigation";
-import type { SuggestedAction } from "@/lib/email/analysis-metadata";
+import type { CalendarProposal, SuggestedAction } from "@/lib/email/analysis-metadata";
+import { buildGoogleCalendarUrl, buildGoogleCalendarAllDayUrl, buildIcsContent, buildIcsAllDayContent } from "@/lib/email/calendar-utils";
 
 type SelectItem = { id: string; title: string };
 type SelectContactItem = { id: string; name: string; email: string | null };
@@ -60,6 +61,7 @@ type AiRecommendation = {
   sentimentScore: number | null;
   isUrgent: boolean;
   suggestedProjectStage: string | null;
+  calendarProposals: CalendarProposal[];
   suggestedActions: SuggestedAction[];
   followUpQuestions: string[];
 };
@@ -261,6 +263,26 @@ export function EnrichmentPanel({
     });
   };
 
+  const downloadIcs = (proposal: CalendarProposal) => {
+    const ics = proposal.proposedDateTimeIso
+      ? buildIcsContent(proposal.title, proposal.proposedDateTimeIso)
+      : buildIcsAllDayContent(proposal.title, proposal.allDayDateIso!);
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `meeting-${(proposal.proposedDateTimeIso ?? proposal.allDayDateIso ?? "event").slice(0, 10)}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const openGoogleCalendar = (proposal: CalendarProposal) => {
+    const url = proposal.proposedDateTimeIso
+      ? buildGoogleCalendarUrl(proposal.title, proposal.proposedDateTimeIso)
+      : buildGoogleCalendarAllDayUrl(proposal.title, proposal.allDayDateIso!);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   const copyQuestion = async (question: string) => {
     try {
       await navigator.clipboard.writeText(question);
@@ -275,8 +297,8 @@ export function EnrichmentPanel({
     <div className="space-y-5">
       <Card>
         <CardHeader>
-          <CardTitle>Analyze Communication</CardTitle>
-          <CardDescription>Filter emails and run provider-agnostic communication analysis.</CardDescription>
+          <CardTitle>Analyzovat korespondenci</CardTitle>
+          <CardDescription>Filtrujte e-maily a spusťte analýzu komunikace napříč poskytovateli.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={runAnalysis} className="grid gap-4 sm:grid-cols-2">
@@ -324,7 +346,7 @@ export function EnrichmentPanel({
             <label className="space-y-1">
               <span className="text-xs font-medium text-zinc-500">Provider</span>
               <select name="provider" className="w-full rounded-lg border border-zinc-200 p-2 text-sm" disabled={useTestData}>
-                <option value="ALL">All</option>
+                <option value="ALL">Vše</option>
                 <option value="GMAIL">Gmail</option>
               </select>
             </label>
@@ -332,9 +354,9 @@ export function EnrichmentPanel({
             <label className="space-y-1">
               <span className="text-xs font-medium text-zinc-500">Direction</span>
               <select name="direction" className="w-full rounded-lg border border-zinc-200 p-2 text-sm" disabled={useTestData}>
-                <option value="all">All</option>
-                <option value="inbound">Inbound</option>
-                <option value="outbound">Outbound</option>
+                <option value="all">Vše</option>
+                <option value="inbound">Příchozí</option>
+                <option value="outbound">Odchozí</option>
               </select>
             </label>
 
@@ -346,7 +368,7 @@ export function EnrichmentPanel({
             <div className="sm:col-span-2 flex justify-end">
               <Button type="submit" disabled={isPending}>
                 {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {useTestData ? "Spustit testovací analýzu" : "Analyze Communication"}
+                {useTestData ? "Spustit testovací analýzu" : "Analyzovat korespondenci"}
               </Button>
             </div>
           </form>
@@ -359,19 +381,19 @@ export function EnrichmentPanel({
 
           {summary && (
             <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
-              <p>Imported emails: <strong>{summary.importedEmails}</strong></p>
-              <p>Matched contacts: <strong>{summary.matchedContacts}</strong></p>
-              <p>Suggested new contacts: <strong>{summary.suggestedContacts}</strong></p>
-              <p>Contact actions to review: <strong>{contactActionItems}</strong></p>
-              <p>Generated tasks: <strong>{summary.generatedTasks}</strong></p>
+              <p>Importované e-maily: <strong>{summary.importedEmails}</strong></p>
+              <p>Nalezené kontakty: <strong>{summary.matchedContacts}</strong></p>
+              <p>Navržené nové kontakty: <strong>{summary.suggestedContacts}</strong></p>
+              <p>Kontaktní akce ke kontrole: <strong>{contactActionItems}</strong></p>
+              <p>Vygenerované úkoly: <strong>{summary.generatedTasks}</strong></p>
               {summary.suggestedContacts > 0 && (
                 <p className="mt-1 text-amber-700">
-                  Suggested contacts need review and project linking in the Enrichment Results section.
+                  Navržené kontakty vyžadují přiřazení k projektu — viz sekce Výsledky analýzy.
                 </p>
               )}
               {summary.importedEmails === 0 && (
                 <p className="mt-2 text-zinc-600">
-                  No emails matched the current filters. Try removing contact filter or widening date range.
+                  Žádné e-maily neodpovídají filtrům. Zkuste rozšířit datum nebo odebrat filtr kontaktu.
                 </p>
               )}
             </div>
@@ -382,8 +404,8 @@ export function EnrichmentPanel({
       {hasAiRecommendations && (
         <section className="space-y-3">
           <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-            <h3 className="text-sm font-semibold text-zinc-900">AI Doporučení</h3>
-            <p className="text-xs text-zinc-600">Doporučení z `analysisMetadata` uložených v databázi.</p>
+            <h3 className="text-sm font-semibold text-zinc-900">AI doporučení z komunikace</h3>
+            <p className="text-xs text-zinc-600">Doporučení z analýzy komunikace uložené v databázi.</p>
           </div>
 
           {recommendationMessage && (
@@ -457,6 +479,49 @@ export function EnrichmentPanel({
                   </div>
                 )}
 
+                {recommendation.calendarProposals.length > 0 && (
+                  <div className="mt-3 space-y-2 rounded-md border border-indigo-100 bg-indigo-50 p-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Navržené termíny</p>
+                    {recommendation.calendarProposals.map((proposal, index) => (
+                      <div key={`${recommendation.activityId}-cal-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded border border-indigo-200 bg-white px-2 py-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <CalendarDays className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-zinc-900 truncate">{proposal.title}</p>
+                            <p className="text-xs text-zinc-500">
+                              {proposal.proposedDateTimeIso
+                                ? new Date(proposal.proposedDateTimeIso).toLocaleString("cs-CZ")
+                                : proposal.allDayDateIso
+                                  ? new Date(proposal.allDayDateIso).toLocaleDateString("cs-CZ")
+                                  : null}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => downloadIcs(proposal)}
+                          >
+                            ICS
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => openGoogleCalendar(proposal)}
+                          >
+                            Google Kalendář
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {recommendation.followUpQuestions.length > 0 && (
                   <div className="mt-3 space-y-2 rounded-md border border-zinc-200 bg-white p-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600">Follow-up otázky</p>
@@ -480,8 +545,8 @@ export function EnrichmentPanel({
       {hasResults && (
         <section className="space-y-3">
           <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-            <h3 className="text-sm font-semibold text-zinc-900">Enrichment Results</h3>
-            <p className="text-xs text-zinc-600">Nové záznamy vytvořené během poslední analýzy.</p>
+            <h3 className="text-sm font-semibold text-zinc-900">Výsledky analýzy</h3>
+            <p className="text-xs text-zinc-600">Záznamy vytvořené během poslední analýzy korespondence.</p>
           </div>
 
           {isDeleting && (

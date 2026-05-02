@@ -208,6 +208,7 @@ export default async function EmailAnalyzerPage({
         sentimentScore: metadata.sentimentScore,
         isUrgent: metadata.isUrgent,
         suggestedProjectStage: metadata.suggestedProjectStage,
+        calendarProposals: metadata.calendarProposals,
         suggestedActions: metadata.suggestedActions,
         followUpQuestions: metadata.followUpQuestions
       };
@@ -221,7 +222,7 @@ export default async function EmailAnalyzerPage({
   return (
     <Shell
       title="Email Analyzer"
-      description="Import Gmail communication, match to CRM projects, and generate tasks."
+      description="Importujte korespondenci, přiřaďte k výzkumným projektům a generujte výzkumné milníky."
       actions={<ConnectGmailButton returnPath="/email-analyzer" />}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr,340px]">

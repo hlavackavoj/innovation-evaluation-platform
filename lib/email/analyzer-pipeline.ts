@@ -2,17 +2,18 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
   ActivityType,
   EmailSyncJobStatus,
+  Prisma,
   PipelineStage,
   ProjectPriority,
   TaskSuggestionStatus,
-  TaskStatus,
-  type Prisma
+  TaskStatus
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fetchProviderMessages, computeBodyHash } from "@/lib/email/provider-client";
 import { getDecryptedConnection, updateConnectionToken } from "@/lib/email/token-store";
 import { refreshAccessToken } from "@/lib/email/oauth-service";
 import { matchEmailToProject } from "@/lib/email/matching";
+import { detectPhaseFromText } from "@/lib/email/phase-triggers";
 import type { EmailDirection, EmailFetchFilter } from "@/lib/email/types";
 import { dedupeProviderMessages } from "@/lib/email/idempotency";
 import type { NormalizedEmailMessage } from "@/lib/email/types";
@@ -1062,52 +1063,39 @@ async function createSuggestedTaskIfMissing(params: {
   const dueDate = params.suggestion.deadlineIso ? new Date(params.suggestion.deadlineIso) : null;
   const normalizedDueDate = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null;
 
-  const existingTask = await prisma.task.findFirst({
-    where: {
-      sourceActivityId: params.activityId,
-      projectId: params.projectId,
-      title: {
-        equals: normalizeTaskTitle(params.suggestion.title),
-        mode: "insensitive"
+  try {
+    return await prisma.task.create({
+      data: {
+        projectId: params.projectId,
+        contactId: params.contactId,
+        sourceSyncJobId: params.syncJobId,
+        assignedToUserId: null,
+        sourceActivityId: params.activityId,
+        title: params.suggestion.title,
+        description: params.suggestion.description,
+        status: TaskStatus.TODO,
+        priority: applyUniversityTaskPriority(params.suggestion),
+        dueDate: normalizedDueDate,
+        suggestionStatus: TaskSuggestionStatus.SUGGESTED,
+        suggestionConfidence: params.suggestion.confidence,
+        suggestionReason: params.suggestion.reason,
+        suggestionMetadata: params.suggestion as Prisma.InputJsonValue
       },
-      dueDate: normalizedDueDate,
-      suggestionStatus: TaskSuggestionStatus.SUGGESTED
-    },
-    select: {
-      id: true
-    }
-  });
-
-  if (existingTask) {
-    return null;
-  }
-
-  return prisma.task.create({
-    data: {
-      projectId: params.projectId,
-      contactId: params.contactId,
-      sourceSyncJobId: params.syncJobId,
-      assignedToUserId: null,
-      sourceActivityId: params.activityId,
-      title: params.suggestion.title,
-      description: params.suggestion.description,
-      status: TaskStatus.TODO,
-      priority: applyUniversityTaskPriority(params.suggestion),
-      dueDate: normalizedDueDate,
-      suggestionStatus: TaskSuggestionStatus.SUGGESTED,
-      suggestionConfidence: params.suggestion.confidence,
-      suggestionReason: params.suggestion.reason,
-      suggestionMetadata: params.suggestion as Prisma.InputJsonValue
-    },
-    include: {
-      project: {
-        select: {
-          id: true,
-          title: true
+      include: {
+        project: {
+          select: {
+            id: true,
+            title: true
+          }
         }
       }
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return null;
     }
-  });
+    throw error;
+  }
 }
 
 function resolveSuggestedProjectId(
@@ -1311,7 +1299,7 @@ async function processEmailMessageForEnrichment(
     sentimentScore: data.sentimentScore,
     isUrgent: data.isUrgent,
     suggestedProjectStage: data.suggestedProjectStage,
-    suggestedUniversityPhase: data.suggestedUniversityPhase,
+    suggestedUniversityPhase: data.suggestedUniversityPhase ?? detectPhaseFromText(joinedText),
     meetingDatetimes: data.meetingDatetimes,
     intentCategory: data.intentCategory,
     actionItems: data.actionItems,

@@ -247,6 +247,7 @@ model Task {
   assignedTo       User?           @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
   sourceActivity   Activity?       @relation("TaskSourceActivity", fields: [sourceActivityId], references: [id], onDelete: SetNull)
 
+  @@unique([sourceActivityId, projectId, title], map: "task_suggestion_dedup")
   @@index([contactId])
   @@index([sourceActivityId])
   @@index([sourceSyncJobId])
