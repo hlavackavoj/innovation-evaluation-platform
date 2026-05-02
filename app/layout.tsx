@@ -19,6 +19,15 @@ export const dynamic = "force-dynamic";
 
 const hasRequiredKindeEnv = getMissingKindeEnv().length === 0;
 
+function isNextRedirectError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeDigest = (error as { digest?: unknown }).digest;
+  return typeof maybeDigest === "string" && maybeDigest.startsWith("NEXT_REDIRECT");
+}
+
 export default async function RootLayout({
   children
 }: Readonly<{
@@ -49,6 +58,10 @@ export default async function RootLayout({
       </html>
     );
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     console.error("CRITICAL_LAYOUT_ERROR:", error);
     return (
       <html lang="en" className={inter.variable}>
