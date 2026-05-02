@@ -46,9 +46,23 @@ export async function getDashboardData() {
         activityDate: "desc"
       },
       take: 5,
-      include: {
-        project: true,
-        user: true
+      select: {
+        id: true,
+        type: true,
+        note: true,
+        activityDate: true,
+        analysisMetadata: true,
+        project: {
+          select: {
+            id: true,
+            title: true
+          }
+        },
+        user: {
+          select: {
+            name: true
+          }
+        }
       }
     }),
     prisma.project.findMany({
@@ -123,8 +137,19 @@ export async function getProjectById(projectId: string) {
         orderBy: {
           activityDate: "desc"
         },
-        include: {
-          user: true
+        select: {
+          id: true,
+          type: true,
+          note: true,
+          activityDate: true,
+          emailMessageId: true,
+          emailParentId: true,
+          aiAnalysis: true,
+          user: {
+            select: {
+              name: true
+            }
+          }
         }
       },
       tasks: {
@@ -188,8 +213,19 @@ export async function getProjectById(projectId: string) {
         orderBy: {
           activityDate: "desc"
         },
-        include: {
-          user: true
+        select: {
+          id: true,
+          type: true,
+          note: true,
+          activityDate: true,
+          emailMessageId: true,
+          emailParentId: true,
+          aiAnalysis: true,
+          user: {
+            select: {
+              name: true
+            }
+          }
         }
       },
       tasks: {
