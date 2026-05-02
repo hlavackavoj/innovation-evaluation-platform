@@ -344,7 +344,7 @@ type PersistEmailContext = {
     createdActivities: number;
   };
   createdEntities: {
-    contacts: Array<{ id: string; email: string; organizationName: string | null }>;
+    contacts: Array<{ id: string; name: string; email: string; organizationName: string | null }>;
     organizations: Array<{ id: string; domain: string }>;
     tasks: Array<{
       id: string;
@@ -431,6 +431,7 @@ async function processEmailMessageForEnrichment(
       context.stats.createdContacts += 1;
       context.createdEntities.contacts.push({
         id: senderResolution.contactId,
+        name: senderResolution.contactName || guessContactName(senderEmail, sender.name),
         email: senderResolution.contactEmail ?? senderEmail,
         organizationName: senderResolution.organizationName
       });
@@ -595,7 +596,7 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
       createdActivities: 0
     };
     const createdEntities = {
-      contacts: [] as Array<{ id: string; email: string; organizationName: string | null }>,
+      contacts: [] as Array<{ id: string; name: string; email: string; organizationName: string | null }>,
       organizations: [] as Array<{ id: string; domain: string }>,
       tasks: [] as Array<{
         id: string;
@@ -801,7 +802,7 @@ export async function runMockEmailEnrichmentTest(input: {
       createdActivities: 0
     };
     const createdEntities = {
-      contacts: [] as Array<{ id: string; email: string; organizationName: string | null }>,
+      contacts: [] as Array<{ id: string; name: string; email: string; organizationName: string | null }>,
       organizations: [] as Array<{ id: string; domain: string }>,
       tasks: [] as Array<{
         id: string;

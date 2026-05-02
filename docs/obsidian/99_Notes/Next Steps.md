@@ -1,6 +1,6 @@
 # Next Steps
 
-Aktualizováno: duben 2026.
+Aktualizováno: květen 2026.
 
 ## Hotovo (duben 2026)
 
@@ -10,6 +10,10 @@ Aktualizováno: duben 2026.
 - ✅ Auth a role (Kinde Auth)
 - ✅ Šablony dokumentů (Supabase Storage)
 - ✅ Email Analyzer v2 (Gmail + Outlook OAuth, AI analýza, aktivity, úkoly)
+- ✅ Ghost migrace fix (`20260430231232_task_contact_link`) + bezpečný DB reset (`reset-db-safe.sh`)
+- ✅ Email Analyzer enrichment feed (interaktivní seznamy + mazání kontaktů/úkolů)
+- ✅ Test mode toggle: `Simulovat testovací data` přes `/api/debug/test-email-analysis`
+- ✅ Server config hard-fail fix: layout/auth route nepadá globálně při chybějících `KINDE_*` proměnných
 
 ## Nejbližší možné kroky
 
@@ -24,6 +28,9 @@ Přidat funkční metriky na dashboard – funnel, konverze, stagnující projek
 
 ### kindeId na User modelu
 Přidat `kindeId` jako unique field na User model – aktuálně upsert probíhá jen přes email.
+
+### Ops hygiene pro env na Vercelu
+Zkontrolovat, že všechny `KINDE_*` a `DATABASE_URL` proměnné jsou nastavené ve všech prostředích (Preview + Production), aby auth běžel bez omezeného režimu.
 
 ### Automated email sync
 Nastavit cron job pro `POST /api/email/sync` s `EMAIL_SYNC_CRON_SECRET` – aktuálně jen manuální sync.

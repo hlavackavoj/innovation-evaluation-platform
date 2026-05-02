@@ -6,14 +6,14 @@ import { Loader2, Trash2 } from "lucide-react";
 import { type ProjectPriority } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { deleteContactAction, deleteOrganizationAction, deleteTaskAction } from "@/app/email-analyzer/actions";
+import { deleteContact, deleteOrganizationAction, deleteTask } from "@/app/email-analyzer/actions";
 import { useRouter } from "next/navigation";
 
 type SelectItem = { id: string; title: string };
 type SelectContactItem = { id: string; name: string; email: string | null };
 
 type CreatedEntities = {
-  contacts: Array<{ id: string; email: string; organizationName: string | null }>;
+  contacts: Array<{ id: string; name: string; email: string; organizationName: string | null }>;
   tasks: Array<{ id: string; title: string; priority: ProjectPriority; contactId: string | null; contactName: string | null }>;
   organizations: Array<{ id: string; domain: string }>;
 };
@@ -110,11 +110,11 @@ export function EnrichmentPanel({
 
     startDeleteTransition(async () => {
       if (type === "contact") {
-        await deleteContactAction(id);
+        await deleteContact(id);
         setFeed((prev) => ({ ...prev, contacts: prev.contacts.filter((item) => item.id !== id) }));
       }
       if (type === "task") {
-        await deleteTaskAction(id);
+        await deleteTask(id);
         setFeed((prev) => ({ ...prev, tasks: prev.tasks.filter((item) => item.id !== id) }));
       }
       if (type === "organization") {
@@ -194,7 +194,7 @@ export function EnrichmentPanel({
 
             <label className="sm:col-span-2 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
               <input type="checkbox" checked={useTestData} onChange={(event) => setUseTestData(event.target.checked)} />
-              Testovací data (volá /api/debug/test-email-analysis)
+              Simulovat testovací data (volá /api/debug/test-email-analysis)
             </label>
 
             <div className="sm:col-span-2 flex justify-end">
@@ -239,9 +239,9 @@ export function EnrichmentPanel({
                 <div key={contact.id} className="flex items-start justify-between gap-2 rounded-lg border border-zinc-200 p-2">
                   <div className="min-w-0">
                     <Link href={`/contacts/${contact.id}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
-                      {contact.email}
+                      {contact.name}
                     </Link>
-                    <p className="text-xs text-zinc-500">{contact.organizationName ?? "Bez organizace"}</p>
+                    <p className="text-xs text-zinc-500">{contact.organizationName ?? "Bez organizace"} · {contact.email}</p>
                   </div>
                   <Button
                     type="button"

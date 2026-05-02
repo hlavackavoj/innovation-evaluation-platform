@@ -16,6 +16,9 @@ function parseSummary(summary: unknown) {
 
   const data = summary as Record<string, unknown>;
   const created = (data.createdEntities as Record<string, unknown> | undefined) ?? {};
+  const contactsRaw = Array.isArray(created.contacts) ? created.contacts : [];
+  const tasksRaw = Array.isArray(created.tasks) ? created.tasks : [];
+  const organizationsRaw = Array.isArray(created.organizations) ? created.organizations : [];
 
   return {
     importedEmails: Number(data.importedEmails ?? 0),
@@ -23,9 +26,17 @@ function parseSummary(summary: unknown) {
     suggestedContacts: Number(data.suggestedContacts ?? 0),
     generatedTasks: Number(data.generatedTasks ?? 0),
     createdEntities: {
-      contacts: Array.isArray(created.contacts) ? created.contacts : [],
-      tasks: Array.isArray(created.tasks) ? created.tasks : [],
-      organizations: Array.isArray(created.organizations) ? created.organizations : []
+      contacts: contactsRaw.map((item) => {
+        const row = item as Record<string, unknown>;
+        return {
+          id: String(row.id ?? ""),
+          name: String(row.name ?? row.email ?? "Unknown contact"),
+          email: String(row.email ?? ""),
+          organizationName: typeof row.organizationName === "string" ? row.organizationName : null
+        };
+      }),
+      tasks: tasksRaw,
+      organizations: organizationsRaw
     }
   };
 }

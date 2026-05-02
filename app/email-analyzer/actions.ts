@@ -52,7 +52,7 @@ export async function disconnectConnectionAction(formData: FormData) {
   redirect("/email-analyzer?toast=provider-disconnected");
 }
 
-export async function deleteContactAction(contactId: string) {
+export async function deleteContact(contactId: string) {
   const user = await requireCurrentUser();
   const contact = await prisma.contact.findFirst({
     where: {
@@ -81,7 +81,7 @@ export async function deleteContactAction(contactId: string) {
   });
 }
 
-export async function deleteTaskAction(taskId: string) {
+export async function deleteTask(taskId: string) {
   const user = await requireCurrentUser();
   const task = await prisma.task.findFirst({
     where: {
@@ -147,3 +147,7 @@ export async function deleteOrganizationAction(organizationId: string) {
     }
   });
 }
+
+// Backward-compatible aliases for any existing imports.
+export const deleteContactAction = deleteContact;
+export const deleteTaskAction = deleteTask;

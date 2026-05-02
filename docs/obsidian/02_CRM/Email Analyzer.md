@@ -118,6 +118,25 @@ Outlook delegated permissions: `openid`, `email`, `offline_access`, `Mail.Read`,
 
 ## Implementace
 
+### Stabilizace po ghost migraci (květen 2026)
+
+- DB schema je potvrzeně v syncu po aplikaci migrace `20260430231232_task_contact_link` (oprava chybějícího `Task.contactId`).
+- Přidán bezpečný reset skript `scripts/reset-db-safe.sh`; lokální reset už nepočítá s cache artefakty.
+- Endpoint `POST /api/debug/test-email-analysis` vrací správně `401` pro nepřihlášeného uživatele (místo obecného `500`) a strukturovanou chybu.
+- Globální "Server configuration error" byl zjemněn: layout už nepadá na chybějících `KINDE_*` env var, místo toho běží v omezeném režimu a auth route vrací kontrolovaný `503` s chybějícími proměnnými.
+
+### UX update: interaktivní enrichment feed (květen 2026)
+
+- Feed na `/email-analyzer` má interaktivní sekce:
+  - Nově vytvořené kontakty (jméno + firma + e-mail),
+  - Detekované úkoly (priorita + vazba na kontakt),
+  - Nové organizace.
+- Přidán toggle `Simulovat testovací data`; při zapnutí tlačítko analyzace volá `POST /api/debug/test-email-analysis` místo Gmail sync flow.
+- Mazání je dostupné přímo u položek feedu:
+  - `deleteContact(contactId)`
+  - `deleteTask(taskId)`
+- UI mazání běží přes `useTransition`, takže zůstává plynulé a po akci se dělá `router.refresh()`.
+
 ### Data Enrichment Flow
 
 Aktuální flow už není jen import, ale aktivní CRM enrichment:

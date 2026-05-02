@@ -1,5 +1,6 @@
-const requiredServerEnv = [
-  "DATABASE_URL",
+const requiredServerEnv = ["DATABASE_URL"] as const;
+
+const requiredKindeEnv = [
   "KINDE_ISSUER_URL",
   "KINDE_CLIENT_ID",
   "KINDE_CLIENT_SECRET",
@@ -21,6 +22,13 @@ export function assertRequiredServerEnv() {
   if (missing.length > 0) {
     throw new Error(`Missing required server env vars: ${missing.join(", ")}`);
   }
+}
+
+export function getMissingKindeEnv(): string[] {
+  return requiredKindeEnv.filter((key) => {
+    const value = process.env[key];
+    return !value || value.trim().length === 0;
+  });
 }
 
 export function formatErrorForDisplay(error: unknown): string {

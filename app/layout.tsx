@@ -5,7 +5,7 @@ import { UserRole } from "@prisma/client";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { Navigation } from "@/components/navigation";
 import { ensureUserInDb } from "@/lib/auth";
-import { assertRequiredServerEnv } from "@/lib/env";
+import { assertRequiredServerEnv, getMissingKindeEnv } from "@/lib/env";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -16,6 +16,8 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+const hasRequiredKindeEnv = getMissingKindeEnv().length === 0;
 
 export default async function RootLayout({
   children
@@ -30,12 +32,17 @@ export default async function RootLayout({
     const authenticated = await isAuthenticated();
 
     // Never call Prisma/Kinde user profile when the request is unauthenticated.
-    if (authenticated) {
+    if (authenticated && hasRequiredKindeEnv) {
       currentUser = await ensureUserInDb();
     }
     return (
       <html lang="en" className={inter.variable}>
         <body className="bg-zinc-50 font-sans antialiased">
+          {!hasRequiredKindeEnv ? (
+            <div className="mx-auto mt-6 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              Auth konfigurace není kompletní (`KINDE_*` proměnné). Aplikace běží v omezeném režimu bez přihlášení.
+            </div>
+          ) : null}
           {currentUser ? <Navigation userName={currentUser.name} userRole={currentUser.role} /> : null}
           {currentUser ? <main className="mx-auto max-w-7xl px-6 py-8">{children}</main> : children}
         </body>
