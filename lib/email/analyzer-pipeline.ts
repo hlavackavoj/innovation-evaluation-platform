@@ -18,9 +18,15 @@ import type { NormalizedEmailMessage } from "@/lib/email/types";
 
 type AnalyzerOutput = {
   summary: string;
+  intentCategory: "MEETING" | "PROPOSAL" | "FEEDBACK" | "ADMIN";
   themes: string[];
   risks: string[];
   nextSteps: Array<{ title: string; dueDays: number }>;
+  actionItems: Array<{
+    task: string;
+    deadline: string | null;
+    assigneeSuggestion: string | null;
+  }>;
   sentimentScore: number;
   isUrgent: boolean;
   suggestedProjectStage: PipelineStage | null;
@@ -34,6 +40,40 @@ type AnalyzerOutput = {
   }>;
   followUpQuestions: string[];
 };
+
+const INTENT_CATEGORIES = new Set<AnalyzerOutput["intentCategory"]>([
+  "MEETING",
+  "PROPOSAL",
+  "FEEDBACK",
+  "ADMIN"
+]);
+
+const WEEKDAY_ALIASES = new Map<string, number>([
+  ["monday", 1],
+  ["mon", 1],
+  ["pondeli", 1],
+  ["tuesday", 2],
+  ["tue", 2],
+  ["tues", 2],
+  ["utery", 2],
+  ["wednesday", 3],
+  ["wed", 3],
+  ["streda", 3],
+  ["thursday", 4],
+  ["thu", 4],
+  ["thur", 4],
+  ["thurs", 4],
+  ["ctvrtek", 4],
+  ["friday", 5],
+  ["fri", 5],
+  ["patek", 5],
+  ["saturday", 6],
+  ["sat", 6],
+  ["sobota", 6],
+  ["sunday", 0],
+  ["sun", 0],
+  ["nedele", 0]
+]);
 
 function extractDomain(email?: string | null): string | null {
   if (!email) return null;
@@ -233,9 +273,17 @@ export type AnalyzeCommunicationInput = {
 
 const OUTPUT_EXAMPLE = {
   summary: "Short factual summary of communication.",
+  intentCategory: "PROPOSAL",
   themes: ["IP", "market validation"],
   risks: ["Missing IP status"],
   nextSteps: [{ title: "Book startup mentor call", dueDays: 5 }],
+  actionItems: [
+    {
+      task: "Share first draft statement of work",
+      deadline: "2026-05-06",
+      assignee_suggestion: "Alice"
+    }
+  ],
   sentimentScore: 7,
   isUrgent: false,
   suggestedProjectStage: "DISCOVERY",
@@ -265,6 +313,214 @@ const OUTPUT_EXAMPLE = {
 };
 
 const PIPELINE_STAGES = new Set<PipelineStage>(Object.values(PipelineStage));
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function toIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isSameCalendarDate(date: Date, year: number, monthIndex: number, day: number): boolean {
+  return date.getFullYear() === year && date.getMonth() === monthIndex && date.getDate() === day;
+}
+
+function parseIntentCategory(value: unknown): AnalyzerOutput["intentCategory"] | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return INTENT_CATEGORIES.has(normalized as AnalyzerOutput["intentCategory"])
+    ? (normalized as AnalyzerOutput["intentCategory"])
+    : null;
+}
+
+function parseDueDaysFromIsoDate(deadline: string | null, referenceDate: Date): number | null {
+  if (!deadline) return null;
+  const parsed = new Date(`${deadline}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const diffMs = startOfDay(parsed).getTime() - startOfDay(referenceDate).getTime();
+  const diffDays = Math.round(diffMs / 86_400_000);
+  return diffDays < 0 ? null : diffDays;
+}
+
+function getWeekdayTarget(normalizedText: string): number | null {
+  const tokens = new Set(normalizedText.match(/[a-z0-9]+/g) ?? []);
+  for (const [alias, weekday] of WEEKDAY_ALIASES.entries()) {
+    if (tokens.has(alias)) return weekday;
+  }
+  return null;
+}
+
+function resolveWeekdayDate(rawValue: string, referenceDate: Date): string | null {
+  const normalized = normalizeText(rawValue);
+  const targetWeekday = getWeekdayTarget(normalized);
+  if (targetWeekday === null) return null;
+
+  const currentWeekday = referenceDate.getDay();
+  let delta = (targetWeekday - currentWeekday + 7) % 7;
+  if (/\b(next|pristi|nasledujici)\b/.test(normalized)) {
+    delta = delta === 0 ? 7 : delta + 7;
+  }
+
+  const resolved = startOfDay(referenceDate);
+  resolved.setDate(resolved.getDate() + delta);
+  return toIsoDate(resolved);
+}
+
+function parseAbsoluteDate(rawValue: string, referenceDate: Date): string | null {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return null;
+
+  const isoDateMatch = trimmed.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (isoDateMatch) return isoDateMatch[1];
+
+  const dottedMatch = trimmed.match(/\b(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\b/);
+  if (dottedMatch) {
+    const day = Number(dottedMatch[1]);
+    const month = Number(dottedMatch[2]);
+    const rawYear = dottedMatch[3];
+    const year = rawYear ? Number(rawYear.length === 2 ? `20${rawYear}` : rawYear) : referenceDate.getFullYear();
+    const monthIndex = month - 1;
+    const date = new Date(year, monthIndex, day);
+    if (!Number.isNaN(date.getTime()) && isSameCalendarDate(date, year, monthIndex, day)) return toIsoDate(date);
+  }
+
+  const slashMatch = trimmed.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+  if (slashMatch) {
+    const first = Number(slashMatch[1]);
+    const second = Number(slashMatch[2]);
+    const rawYear = slashMatch[3];
+    const year = rawYear ? Number(rawYear.length === 2 ? `20${rawYear}` : rawYear) : referenceDate.getFullYear();
+
+    // Slash dates are locale-ambiguous. Only parse when unambiguous:
+    // - DD/MM when first > 12
+    // - MM/DD when second > 12
+    // If both are <= 12, keep null to avoid silently wrong deadlines.
+    if (first > 12 && second <= 12) {
+      const monthIndex = second - 1;
+      const date = new Date(year, monthIndex, first);
+      if (!Number.isNaN(date.getTime()) && isSameCalendarDate(date, year, monthIndex, first)) return toIsoDate(date);
+    }
+    if (second > 12 && first <= 12) {
+      const monthIndex = first - 1;
+      const day = second;
+      const date = new Date(year, monthIndex, day);
+      if (!Number.isNaN(date.getTime()) && isSameCalendarDate(date, year, monthIndex, day)) return toIsoDate(date);
+    }
+  }
+
+  const nativeDate = new Date(trimmed);
+  if (!Number.isNaN(nativeDate.getTime())) return toIsoDate(nativeDate);
+
+  return null;
+}
+
+function normalizeDeadlineToIso(value: unknown, referenceDate: Date): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const normalized = normalizeText(trimmed);
+  if (normalized === "today" || normalized === "dnes") {
+    return toIsoDate(startOfDay(referenceDate));
+  }
+  if (normalized === "tomorrow" || normalized === "zitra") {
+    const result = startOfDay(referenceDate);
+    result.setDate(result.getDate() + 1);
+    return toIsoDate(result);
+  }
+  if (normalized === "day after tomorrow" || normalized === "pozitri") {
+    const result = startOfDay(referenceDate);
+    result.setDate(result.getDate() + 2);
+    return toIsoDate(result);
+  }
+
+  const weekdayDate = resolveWeekdayDate(trimmed, referenceDate);
+  if (weekdayDate) return weekdayDate;
+
+  return parseAbsoluteDate(trimmed, referenceDate);
+}
+
+function parseActionItems(value: unknown, referenceDate: Date): AnalyzerOutput["actionItems"] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    .map((item) => {
+      const taskCandidate =
+        typeof item.task === "string"
+          ? item.task
+          : typeof item.title === "string"
+            ? item.title
+            : typeof item.description === "string"
+              ? item.description
+              : "";
+      const task = taskCandidate.trim();
+      if (!task) return null;
+
+      const deadlineCandidate =
+        typeof item.deadline === "string"
+          ? item.deadline
+          : typeof item.dueDate === "string"
+            ? item.dueDate
+            : typeof item.due === "string"
+              ? item.due
+              : "";
+      const assigneeCandidate =
+        typeof item.assignee_suggestion === "string"
+          ? item.assignee_suggestion
+          : typeof item.assigneeSuggestion === "string"
+            ? item.assigneeSuggestion
+            : typeof item.assignee === "string"
+              ? item.assignee
+              : typeof item.owner === "string"
+                ? item.owner
+                : "";
+
+      return {
+        task,
+        deadline: normalizeDeadlineToIso(deadlineCandidate, referenceDate),
+        assigneeSuggestion: assigneeCandidate.trim() || null
+      };
+    })
+    .filter((item): item is AnalyzerOutput["actionItems"][number] => !!item);
+}
+
+function inferIntentCategory(
+  summary: string,
+  themes: string[],
+  followUpQuestions: string[],
+  suggestedActions: AnalyzerOutput["suggestedActions"]
+): AnalyzerOutput["intentCategory"] {
+  const merged = normalizeText([summary, ...themes, ...suggestedActions.map((action) => action.title)].join(" "));
+  const hasFeedbackSignals = /(feedback|revision|review|comment|approve|approval|pripomink|zpetn|upravit|schval)/.test(
+    merged
+  );
+  const hasAdminSignals = /(invoice|billing|access|credential|login|admin|faktura|pristup|technick)/.test(merged);
+  const hasProposalSignals =
+    /(proposal|scope|budget|pricing|price|quote|rfp|statement of work|sow|pilot|project intake|zadani|rozpocet|nabidka)/.test(
+      merged
+    ) || followUpQuestions.length > 0;
+
+  if (suggestedActions.some((action) => action.type === "SCHEDULE_MEETING")) return "MEETING";
+  if (followUpQuestions.length >= 3) return "PROPOSAL";
+  if (hasProposalSignals && !hasAdminSignals) return "PROPOSAL";
+  if (hasFeedbackSignals) return "FEEDBACK";
+  if (hasAdminSignals) return "ADMIN";
+  return "FEEDBACK";
+}
 
 function parseDueDays(value: unknown): number | null {
   const dueDays =
@@ -315,6 +571,8 @@ function sanitizeJson(text: string) {
 }
 
 export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
+  const referenceDate = new Date();
+
   try {
     const parsed = JSON.parse(sanitizeJson(raw)) as unknown;
 
@@ -327,7 +585,8 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
     const summary = typeof value.summary === "string" ? value.summary.trim() : "";
     const themes = Array.isArray(value.themes) ? value.themes.filter((v): v is string => typeof v === "string") : [];
     const risks = Array.isArray(value.risks) ? value.risks.filter((v): v is string => typeof v === "string") : [];
-    const nextSteps = Array.isArray(value.nextSteps)
+    const actionItemsFromModel = parseActionItems(value.actionItems, referenceDate);
+    let nextSteps = Array.isArray(value.nextSteps)
       ? value.nextSteps
           .filter((step): step is Record<string, unknown> => !!step && typeof step === "object")
           .map((step) => {
@@ -342,6 +601,7 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
           })
           .filter((step): step is { title: string; dueDays: number } => !!step)
       : [];
+
     const sentimentScore = parseSentimentScore(value.sentimentScore);
     const isUrgent = typeof value.isUrgent === "boolean" ? value.isUrgent : false;
     const suggestedProjectStage = parseSuggestedProjectStage(value.suggestedProjectStage);
@@ -360,8 +620,8 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
             const description = typeof action.description === "string" ? action.description.trim() : "";
             const proposedDateTime =
               typeof action.proposedDateTime === "string" ? action.proposedDateTime.trim() || null : null;
-            const deadline = typeof action.deadline === "string" ? action.deadline.trim() || null : null;
-            const dueDays = parseDueDays(action.dueDays);
+            const deadline = normalizeDeadlineToIso(action.deadline, referenceDate);
+            const dueDays = parseDueDays(action.dueDays) ?? parseDueDaysFromIsoDate(deadline, referenceDate);
 
             return {
               type: rawType,
@@ -378,13 +638,58 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
           })
           .filter((action): action is AnalyzerOutput["suggestedActions"][number] => !!action)
       : [];
-    const followUpQuestions = Array.isArray(value.followUpQuestions)
+
+    const questionsFromFollowUp = Array.isArray(value.followUpQuestions)
       ? value.followUpQuestions
           .filter((question): question is string => typeof question === "string")
           .map((question) => question.trim())
           .filter(Boolean)
-          .slice(0, 3)
       : [];
+    const questionsFromGap = Array.isArray(value.gapAnalysisQuestions)
+      ? value.gapAnalysisQuestions
+          .filter((question): question is string => typeof question === "string")
+          .map((question) => question.trim())
+          .filter(Boolean)
+      : [];
+    const mergedQuestions = [...questionsFromGap, ...questionsFromFollowUp].filter(
+      (question, index, list) => list.indexOf(question) === index
+    );
+
+    const intentCategory =
+      parseIntentCategory(value.intentCategory) ??
+      inferIntentCategory(summary, themes, mergedQuestions, suggestedActions);
+    const followUpQuestions =
+      intentCategory === "PROPOSAL"
+        ? [
+            ...mergedQuestions,
+            "What budget range has been approved for this project?",
+            "What target timeline and decision date should we plan for?",
+            "What scope and success criteria are required for phase one?"
+          ].slice(0, 3)
+        : mergedQuestions.slice(0, 3);
+
+    const actionItems =
+      actionItemsFromModel.length > 0
+        ? actionItemsFromModel
+        : suggestedActions.map((action) => ({
+            task: action.title,
+            deadline:
+              action.deadline ??
+              (typeof action.proposedDateTime === "string"
+                ? normalizeDeadlineToIso(action.proposedDateTime, referenceDate)
+                : null),
+            assigneeSuggestion: null
+          }));
+
+    if (nextSteps.length === 0) {
+      nextSteps = actionItems
+        .map((item) => {
+          const dueDays = parseDueDaysFromIsoDate(item.deadline, referenceDate);
+          if (dueDays === null) return null;
+          return { title: item.task, dueDays };
+        })
+        .filter((item): item is { title: string; dueDays: number } => !!item);
+    }
 
     if (!summary) {
       throw new Error("invalid");
@@ -392,9 +697,11 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
 
     return {
       summary,
+      intentCategory,
       themes,
       risks,
       nextSteps,
+      actionItems,
       sentimentScore,
       isUrgent,
       suggestedProjectStage,
@@ -404,9 +711,11 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
   } catch {
     return {
       summary: "Analyzer fallback: structured extraction unavailable for this message.",
+      intentCategory: "ADMIN",
       themes: [],
       risks: [],
       nextSteps: [],
+      actionItems: [],
       sentimentScore: 5,
       isUrgent: false,
       suggestedProjectStage: null,
@@ -422,9 +731,11 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
   if (!apiKey) {
     return {
       summary: "Analyzer skipped: GOOGLE_AI_API_KEY is missing.",
+      intentCategory: "ADMIN",
       themes: [],
       risks: [],
       nextSteps: [],
+      actionItems: [],
       sentimentScore: 5,
       isUrgent: false,
       suggestedProjectStage: null,
@@ -435,14 +746,19 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
 
   const client = new GoogleGenerativeAI(apiKey);
   const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const analysisDate = toIsoDate(new Date());
   const systemPrompt = [
     "You are an email CRM analyzer. Return strict JSON only.",
-    "Classify and extract action proposals for operations teams.",
-    "Detect these scenarios when present:",
-    "1) Meeting Request: propose action type SCHEDULE_MEETING and include proposedDateTime if available.",
-    "2) Request for Statement: propose action type DRAFT_RESPONSE and include deadline if available.",
-    "3) Project Proposal: provide exactly 3 followUpQuestions that help qualification and CRM intake.",
-    "Metadata requirements:",
+    "Classify each email into exactly one intentCategory: MEETING, PROPOSAL, FEEDBACK, ADMIN.",
+    "Extract actionItems array with fields task, deadline, assignee_suggestion.",
+    "Convert relative deadlines like 'do pátku', 'by Friday', 'tomorrow' to ISO date YYYY-MM-DD using analysis_date.",
+    "For PROPOSAL intent return exactly 3 followUpQuestions focused on missing CRM intake info (budget, timeline, scope/success criteria).",
+    "Scenario guidance:",
+    "1) MEETING: detect request for time slot and add SCHEDULE_MEETING suggested action.",
+    "2) PROPOSAL: detect new project discussion (scope/price/offer).",
+    "3) FEEDBACK: detect response to delivered work, revisions, approval comments.",
+    "4) ADMIN: detect invoice/access/login/technical operations communication.",
+    "Metadata requirements and allowed values:",
     "- sentimentScore: integer 1-10",
     "- isUrgent: boolean (true if message implies deadline/time pressure)",
     "- suggestedProjectStage: one of DISCOVERY, VALIDATION, MVP, SCALING, SPIN_OFF or null",
@@ -450,8 +766,9 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
   ].join("\n");
   const userPrompt = [
     "Analyze CRM communication and return strict JSON.",
-    "Extract themes, risks, actionable next steps, and suggested actions metadata.",
+    "Extract themes, risks, actionable next steps, intent category, action items, and gap-analysis questions.",
     JSON.stringify(OUTPUT_EXAMPLE),
+    `analysis_date: ${analysisDate}`,
     `Subject: ${subject}`,
     `Body: ${bodyText}`
   ].join("\n\n");
@@ -651,7 +968,10 @@ async function processEmailMessageForEnrichment(
     sentimentScore: data.sentimentScore,
     isUrgent: data.isUrgent,
     suggestedProjectStage: data.suggestedProjectStage,
+    intentCategory: data.intentCategory,
+    actionItems: data.actionItems,
     suggestedActions: data.suggestedActions,
+    gapAnalysisQuestions: data.followUpQuestions,
     followUpQuestions: data.followUpQuestions,
     processedAt: new Date().toISOString()
   };
