@@ -4,6 +4,7 @@ import {
   EmailSyncJobStatus,
   PipelineStage,
   ProjectPriority,
+  TaskSuggestionStatus,
   TaskStatus,
   type Prisma
 } from "@prisma/client";
@@ -39,6 +40,31 @@ type AnalyzerOutput = {
     dueDays: number | null;
   }>;
   followUpQuestions: string[];
+};
+
+type SuggestedProjectCandidate = {
+  name: string;
+  confidence: number;
+  reason: string;
+  likelyExisting: boolean;
+  matchedProjectId: string | null;
+};
+
+type SuggestedTaskCandidate = {
+  title: string;
+  description: string | null;
+  priority: ProjectPriority;
+  deadlineIso: string | null;
+  contactEmail: string | null;
+  projectName: string | null;
+  projectRef: string | null;
+  confidence: number;
+  reason: string;
+};
+
+type GeminiTaskSuggestionOutput = {
+  projects: SuggestedProjectCandidate[];
+  tasks: SuggestedTaskCandidate[];
 };
 
 const INTENT_CATEGORIES = new Set<AnalyzerOutput["intentCategory"]>([
@@ -570,6 +596,76 @@ function sanitizeJson(text: string) {
   return trimmed;
 }
 
+function parseConfidence(value: unknown): number {
+  const raw = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (Number.isNaN(raw)) return 0.5;
+  return Math.max(0, Math.min(1, raw));
+}
+
+function parsePriority(value: unknown): ProjectPriority {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (normalized === ProjectPriority.LOW || normalized === ProjectPriority.HIGH || normalized === ProjectPriority.URGENT) {
+    return normalized;
+  }
+  return ProjectPriority.MEDIUM;
+}
+
+function normalizeProjectName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function parseGeminiTaskSuggestionOutput(raw: string): GeminiTaskSuggestionOutput {
+  const parsed = JSON.parse(sanitizeJson(raw)) as unknown;
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Invalid Gemini task suggestion payload.");
+  }
+
+  const payload = parsed as Record<string, unknown>;
+  const rawProjects = Array.isArray(payload.projects) ? payload.projects : [];
+  const rawTasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+  const dedupe = new Set<string>();
+
+  const projects: SuggestedProjectCandidate[] = rawProjects
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+    .map((row) => {
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (!name) return null;
+      const key = normalizeProjectName(name);
+      if (dedupe.has(key)) return null;
+      dedupe.add(key);
+      const candidate: SuggestedProjectCandidate = {
+        name,
+        confidence: parseConfidence(row.confidence),
+        reason: typeof row.reason === "string" ? row.reason.trim() : "Detected from communication",
+        likelyExisting: Boolean(row.likelyExisting),
+        matchedProjectId: null
+      };
+      return candidate;
+    })
+    .filter((row): row is SuggestedProjectCandidate => !!row);
+
+  const tasks = rawTasks
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+    .map((row) => {
+      const title = typeof row.title === "string" ? row.title.trim() : "";
+      if (!title) return null;
+      return {
+        title,
+        description: typeof row.description === "string" ? row.description.trim() || null : null,
+        priority: parsePriority(row.priority),
+        deadlineIso: normalizeDeadlineToIso(row.deadline, new Date()),
+        contactEmail: typeof row.contactEmail === "string" ? row.contactEmail.trim().toLowerCase() || null : null,
+        projectName: typeof row.projectName === "string" ? row.projectName.trim() || null : null,
+        projectRef: typeof row.projectRef === "string" ? row.projectRef.trim() || null : null,
+        confidence: parseConfidence(row.confidence),
+        reason: typeof row.reason === "string" ? row.reason.trim() : "Detected from communication"
+      };
+    })
+    .filter((row): row is SuggestedTaskCandidate => !!row);
+
+  return { projects, tasks };
+}
+
 export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
   const referenceDate = new Date();
 
@@ -793,7 +889,54 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
   return parseAnalyzerOutput(response.response.text());
 }
 
+async function analyzeTaskSuggestionsWithGemini(params: {
+  subject: string;
+  bodyText: string;
+  senderEmail: string | null;
+  knownProjects: Array<{ id: string; title: string }>;
+}): Promise<GeminiTaskSuggestionOutput> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) return { projects: [], tasks: [] };
+
+  const client = new GoogleGenerativeAI(apiKey);
+  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const prompt = [
+    "Return strict JSON only.",
+    "Extract project and task proposals from CRM communication.",
+    "projects[] fields: name, likelyExisting, confidence (0..1), reason",
+    "tasks[] fields: title, description, priority (LOW|MEDIUM|HIGH|URGENT), deadline, contactEmail, projectName, projectRef, confidence (0..1), reason",
+    "Rules:",
+    "- Detect one or multiple projects if present.",
+    "- If unsure about existing project match, keep confidence low and set explicit reason.",
+    "- deadline must be parseable date phrase or null.",
+    `Known projects: ${params.knownProjects.map((p) => `${p.id}:${p.title}`).join(" | ")}`,
+    `Sender email: ${params.senderEmail ?? "unknown"}`,
+    `Subject: ${params.subject}`,
+    `Body: ${params.bodyText.slice(0, 5000)}`
+  ].join("\n");
+
+  const response = await model.generateContent({
+    generationConfig: { responseMimeType: "application/json" },
+    contents: [{ role: "user", parts: [{ text: prompt }] }]
+  });
+
+  return parseGeminiTaskSuggestionOutput(response.response.text());
+}
+
+export function matchSuggestedProjectToExisting(
+  suggestedName: string | null,
+  knownProjects: Array<{ id: string; title: string }>
+): string | null {
+  if (!suggestedName) return null;
+  const normalized = normalizeProjectName(suggestedName);
+  const exact = knownProjects.find((project) => normalizeProjectName(project.title) === normalized);
+  if (exact) return exact.id;
+  const partial = knownProjects.find((project) => normalizeProjectName(project.title).includes(normalized) || normalized.includes(normalizeProjectName(project.title)));
+  return partial?.id ?? null;
+}
+
 type PersistEmailContext = {
+  jobId: string;
   userId: string;
   projectId?: string;
   keywordAliases: string[];
@@ -813,8 +956,17 @@ type PersistEmailContext = {
       id: string;
       title: string;
       priority: ProjectPriority;
+      suggestionStatus: TaskSuggestionStatus;
       contactId: string | null;
       contactName: string | null;
+      projectId: string | null;
+      projectTitle: string | null;
+    }>;
+    suggestedProjects: Array<{
+      name: string;
+      matchedProjectId: string | null;
+      confidence: number;
+      reason: string;
     }>;
   };
   themes: Set<string>;
@@ -987,7 +1139,6 @@ async function processEmailMessageForEnrichment(
 
   const generatedTaskCandidates =
     data.nextSteps.length > 0 ? data.nextSteps.length : data.suggestedActions.length;
-  context.stats.generatedTasks += generatedTaskCandidates;
 
   const activity = await prisma.activity.upsert({
     where: {
@@ -1016,31 +1167,100 @@ async function processEmailMessageForEnrichment(
   });
   context.stats.createdActivities += 1;
 
-  for (const step of data.nextSteps) {
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + step.dueDays);
+  try {
+    const knownProjects = await prisma.project.findMany({
+      select: { id: true, title: true },
+      orderBy: { updatedAt: "desc" },
+      take: 200
+    });
+    const geminiSuggestions = await analyzeTaskSuggestionsWithGemini({
+      subject: message.subject || "(no subject)",
+      bodyText: joinedText,
+      senderEmail: sender?.email ?? null,
+      knownProjects
+    });
 
-    const createdTask = await prisma.task.create({
-      data: {
-        projectId: projectIdForActivity,
+    for (const project of geminiSuggestions.projects) {
+      const matchedProjectId = matchSuggestedProjectToExisting(project.name, knownProjects);
+      context.createdEntities.suggestedProjects.push({
+        name: project.name,
+        matchedProjectId,
+        confidence: project.confidence,
+        reason: project.reason
+      });
+    }
+
+    const candidateTasks =
+      geminiSuggestions.tasks.length > 0
+        ? geminiSuggestions.tasks
+        : data.nextSteps.map((step) => ({
+            title: step.title,
+            description: "Generated from imported communication analysis.",
+            priority: step.dueDays <= 3 ? ProjectPriority.HIGH : ProjectPriority.MEDIUM,
+            deadlineIso: (() => {
+              const dueDate = new Date();
+              dueDate.setDate(dueDate.getDate() + step.dueDays);
+              return dueDate.toISOString();
+            })(),
+            contactEmail: sender?.email?.toLowerCase() ?? null,
+            projectName: null,
+            projectRef: null,
+            confidence: 0.65,
+            reason: "Derived from next steps in communication analysis"
+          }));
+
+    for (const suggestion of candidateTasks) {
+      const resolvedProjectId =
+        matchSuggestedProjectToExisting(suggestion.projectName, knownProjects) ??
+        projectIdForActivity;
+      const dueDate = suggestion.deadlineIso ? new Date(suggestion.deadlineIso) : null;
+      const normalizedDueDate = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null;
+
+      const task = await prisma.task.create({
+        data: {
+          projectId: resolvedProjectId,
+          contactId: senderContactId,
+          sourceSyncJobId: context.jobId === "mock-job" ? null : context.jobId,
+          assignedToUserId: null,
+          sourceActivityId: activity.id,
+          title: suggestion.title,
+          description: suggestion.description,
+          status: TaskStatus.TODO,
+          priority: suggestion.priority,
+          dueDate: normalizedDueDate,
+          suggestionStatus: TaskSuggestionStatus.SUGGESTED,
+          suggestionConfidence: suggestion.confidence,
+          suggestionReason: suggestion.reason,
+          suggestionMetadata: suggestion as Prisma.InputJsonValue
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              title: true
+            }
+          }
+        }
+      });
+
+      context.stats.generatedTasks += 1;
+      context.createdEntities.tasks.push({
+        id: task.id,
+        title: task.title,
+        priority: task.priority,
+        suggestionStatus: task.suggestionStatus,
         contactId: senderContactId,
-        assignedToUserId: null,
-        sourceActivityId: activity.id,
-        title: step.title,
-        description: "Generated from imported communication analysis.",
-        status: TaskStatus.TODO,
-        priority: step.dueDays <= 3 ? ProjectPriority.HIGH : ProjectPriority.MEDIUM,
-        dueDate
-      }
+        contactName: sender?.name?.trim() || null,
+        projectId: task.project.id,
+        projectTitle: task.project.title
+      });
+    }
+  } catch (error) {
+    console.error("[email-enrichment] Task suggestion generation failed", {
+      providerMessageId: message.providerMessageId,
+      error: error instanceof Error ? error.message : String(error),
+      fallbackTaskCandidates: generatedTaskCandidates
     });
-    context.createdEntities.tasks.push({
-      id: createdTask.id,
-      title: createdTask.title,
-      priority: createdTask.priority,
-      contactId: senderContactId,
-      contactName: sender?.name?.trim() || null
-    });
-
   }
 }
 
@@ -1093,9 +1313,13 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
         id: string;
         title: string;
         priority: ProjectPriority;
+        suggestionStatus: TaskSuggestionStatus;
         contactId: string | null;
         contactName: string | null;
-      }>
+        projectId: string | null;
+        projectTitle: string | null;
+      }>,
+      suggestedProjects: [] as Array<{ name: string; matchedProjectId: string | null; confidence: number; reason: string; }>
     };
     const themes = new Set<string>();
     const risks = new Set<string>();
@@ -1165,6 +1389,7 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
         }
         await processEmailMessageForEnrichment(
           {
+            jobId: job.id,
             userId: input.userId,
             projectId: input.projectId,
             keywordAliases,
@@ -1299,9 +1524,13 @@ export async function runMockEmailEnrichmentTest(input: {
         id: string;
         title: string;
         priority: ProjectPriority;
+        suggestionStatus: TaskSuggestionStatus;
         contactId: string | null;
         contactName: string | null;
-      }>
+        projectId: string | null;
+        projectTitle: string | null;
+      }>,
+      suggestedProjects: [] as Array<{ name: string; matchedProjectId: string | null; confidence: number; reason: string; }>
     };
     const themes = new Set<string>();
     const risks = new Set<string>();
@@ -1310,6 +1539,7 @@ export async function runMockEmailEnrichmentTest(input: {
     for (const message of input.messages) {
       await processEmailMessageForEnrichment(
         {
+          jobId: "mock-job",
           userId: input.userId,
           projectId: input.projectId,
           keywordAliases,

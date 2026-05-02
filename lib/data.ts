@@ -24,6 +24,15 @@ function isMissingActivityAnalysisMetadataColumn(error: unknown): boolean {
   return maybe.code === "P2022" && maybe.meta?.column === "Activity.analysisMetadata";
 }
 
+function isMissingTaskContactIdColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybe = error as { code?: unknown; meta?: { column?: unknown } };
+  return maybe.code === "P2022" && maybe.meta?.column === "Task.contactId";
+}
+
 async function getRecentActivitiesForDashboard(activityWhere: Record<string, unknown>) {
   try {
     return await prisma.activity.findMany({
@@ -387,19 +396,81 @@ export async function getOrganizations() {
 
 export async function getTasks() {
   const user = await requireCurrentUser();
+  const where = canAccessAllProjects(user)
+    ? undefined
+    : {
+        project: buildAccessibleProjectWhere(user)
+      };
 
-  return prisma.task.findMany({
-    where: canAccessAllProjects(user)
-      ? undefined
-      : {
-          project: buildAccessibleProjectWhere(user)
-        },
-    orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-    include: {
-      project: true,
-      assignedTo: true
+  try {
+    return await prisma.task.findMany({
+      where,
+      orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+      include: {
+        project: true,
+        contact: true,
+        assignedTo: true
+      }
+    });
+  } catch (error) {
+    if (!isMissingTaskContactIdColumn(error)) {
+      throw error;
     }
-  });
+
+    const ownerFilter = canAccessAllProjects(user) ? "" : `WHERE p."ownerUserId" = ${JSON.stringify(user.id)}`;
+    const rows = await prisma.$queryRawUnsafe<Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      status: string;
+      priority: string;
+      dueDate: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+      projectId: string;
+      projectTitle: string;
+      assignedToUserId: string | null;
+      assignedToName: string | null;
+    }>>(
+      `SELECT
+        t."id",
+        t."title",
+        t."description",
+        t."status",
+        t."priority",
+        t."dueDate",
+        t."createdAt",
+        t."updatedAt",
+        p."id" AS "projectId",
+        p."title" AS "projectTitle",
+        u."id" AS "assignedToUserId",
+        u."name" AS "assignedToName"
+      FROM "Task" t
+      JOIN "Project" p ON p."id" = t."projectId"
+      LEFT JOIN "User" u ON u."id" = t."assignedToUserId"
+      ${ownerFilter}
+      ORDER BY t."dueDate" ASC NULLS LAST, t."createdAt" DESC`
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      status: row.status as never,
+      priority: row.priority as never,
+      dueDate: row.dueDate,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      projectId: row.projectId,
+      contactId: null,
+      assignedToUserId: row.assignedToUserId,
+      sourceActivityId: null,
+      suggestionStatus: "ACCEPTED",
+      project: { id: row.projectId, title: row.projectTitle } as never,
+      contact: null,
+      assignedTo: row.assignedToUserId ? ({ id: row.assignedToUserId, name: row.assignedToName } as never) : null
+    }));
+  }
 }
 
 export async function getProjectFormData() {

@@ -50,8 +50,11 @@ function parseSummary(summary: unknown) {
           id: String(row.id ?? ""),
           title: String(row.title ?? "Untitled task"),
           priority: parsePriority(row.priority),
+          suggestionStatus: String(row.suggestionStatus ?? "SUGGESTED"),
           contactId: typeof row.contactId === "string" ? row.contactId : null,
-          contactName: typeof row.contactName === "string" ? row.contactName : null
+          contactName: typeof row.contactName === "string" ? row.contactName : null,
+          projectId: typeof row.projectId === "string" ? row.projectId : null,
+          projectTitle: typeof row.projectTitle === "string" ? row.projectTitle : null
         };
       }),
       organizations: organizationsRaw.map((item) => {

@@ -52,6 +52,12 @@ enum TaskStatus {
   CANCELLED
 }
 
+enum TaskSuggestionStatus {
+  SUGGESTED
+  ACCEPTED
+  REJECTED
+}
+
 enum OrganizationType {
   UNIVERSITY
   FACULTY
@@ -213,22 +219,30 @@ model Task {
   id               String          @id @default(cuid())
   projectId        String
   contactId        String?
+  sourceSyncJobId  String?
   assignedToUserId String?
   sourceActivityId String?
   title            String
   description      String?
   status           TaskStatus      @default(TODO)
   priority         ProjectPriority @default(MEDIUM)
+  suggestionStatus TaskSuggestionStatus @default(ACCEPTED)
+  suggestionConfidence Float?
+  suggestionReason String?
+  suggestionMetadata Json?
   dueDate          DateTime?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   contact          Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  sourceSyncJob    EmailSyncJob?   @relation(fields: [sourceSyncJobId], references: [id], onDelete: SetNull)
   assignedTo       User?           @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
   sourceActivity   Activity?       @relation("TaskSourceActivity", fields: [sourceActivityId], references: [id], onDelete: SetNull)
 
   @@index([contactId])
   @@index([sourceActivityId])
+  @@index([sourceSyncJobId])
+  @@index([suggestionStatus])
 }
 
 model Recommendation {
@@ -371,6 +385,7 @@ model EmailSyncJob {
   project             Project?                @relation(fields: [projectId], references: [id], onDelete: Cascade)
   accountConnection   EmailAccountConnection? @relation(fields: [accountConnectionId], references: [id], onDelete: SetNull)
   importedMessages    EmailMessage[]          @relation("EmailMessagesInJob")
+  suggestedTasks      Task[]
 
   @@index([userId, createdAt])
   @@index([projectId, status])

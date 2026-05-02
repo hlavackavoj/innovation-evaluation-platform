@@ -15,8 +15,18 @@ type SelectContactItem = { id: string; name: string; email: string | null };
 
 type CreatedEntities = {
   contacts: Array<{ id: string; name: string; email: string; organizationName: string | null }>;
-  tasks: Array<{ id: string; title: string; priority: ProjectPriority; contactId: string | null; contactName: string | null }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    priority: ProjectPriority;
+    suggestionStatus?: string;
+    contactId: string | null;
+    contactName: string | null;
+    projectId?: string | null;
+    projectTitle?: string | null;
+  }>;
   organizations: Array<{ id: string; domain: string }>;
+  suggestedProjects?: Array<{ name: string; matchedProjectId: string | null; confidence: number; reason: string }>;
 };
 
 type AnalysisResult = {
@@ -484,7 +494,14 @@ export function EnrichmentPanel({
                     </Link>
                     <p className="text-xs text-zinc-500">{task.priority} · {task.contactId ? (
                       <Link href={`/contacts/${task.contactId}`} className="text-indigo-600 hover:text-indigo-700">{task.contactName ?? "Kontakt"}</Link>
-                    ) : "Bez kontaktu"}</p>
+                    ) : "Bez kontaktu"} · {task.suggestionStatus ?? "SUGGESTED"}</p>
+                    {task.projectId && (
+                      <p className="text-xs text-zinc-500">
+                        <Link href={`/projects/${task.projectId}`} className="text-indigo-600 hover:text-indigo-700">
+                          {task.projectTitle ?? "Project"}
+                        </Link>
+                      </p>
+                    )}
                   </div>
                   <Button
                     type="button"
