@@ -1,6 +1,75 @@
 # Progress Log
 
-Aktualizováno: 3. 5. 2026 (session 4)
+Aktualizováno: 3. 5. 2026 (session 5)
+
+## 2026-05-03 — Email Analysis Debug
+
+### Investigace 6 e-mailů od `hlavackavojtech@gmail.com`
+
+#### Data Search — Posledních 6 záznamů v EmailMessage
+| providerMessageId | Subject | Direction | SentAt |
+|---|---|---|---|
+| 19de8e9021d6b015 | Update k projektu a dotaz na další fázi | inbound | 2026-05-02 13:37 |
+| 19de8e8c70ed40e7 | Faktura za duben - Innovation Platform | inbound | 2026-05-02 13:37 |
+| 19de8e874598c53a | URGENTNÍ: Nefunguje přihlašování na produkci! | inbound | 2026-05-02 13:37 |
+| 19de8e79268be472 | Poptávka: Redesign webu pro e-shop s kávou | inbound | 2026-05-02 13:36 |
+| 19de8e75646e186b | Re: Schůzka k integraci platební brány | inbound | 2026-05-02 13:35 |
+| 19de8e64bb53c4ec | Schůzka k integraci platební brány | inbound | 2026-05-02 13:34 |
+
+#### Metadata Audit — analysisMetadata v Activity
+**Výsledek:** Žádné Activity záznamy pro těchto 6 e-mailů neexistují — `analysisMetadata` je prázdné. Pipeline se zasekla před fází analýzy, takže `actionItems` ani `calendarProposals` nebyly detekovány.
+
+#### Pipeline Trace — Root Cause
+
+**Příčina selhání:** `resolveProjectIdForActivity` vrátilo `null` → pipeline silently bailovala na řádku 1281 (`if (!projectIdForActivity) return`).
+
+**Proč `null`:**
+1. Žádný explicitní `projectId` v jobu (sync bez výběru projektu).
+2. Kontakt `hlavackavojtech@gmail.com` nemá žádné `ProjectContact` linky.
+3. Organizace `gmail.com` nemá přiřazený žádný projekt.
+4. Fallback hledal projekty owned by userId (`hlavackavoj@gmail.com`) nebo `ownerUserId: null` — ale oba existující projekty (Autonomous Lab Robotics, BioSignal Early Diagnostics) patří jiným uživatelům.
+5. **Všechny 6 jobů: `importedEmails: 6`, `createdActivities: 0`, `generatedTasks: 0`.**
+
+**Fix:** `resolveProjectIdForActivity` rozšířena o Inbox/Obecné fallback — po vyčerpání user-owned fallbacku se použije libovolný projekt (nejnověji aktualizovaný), aby e-maily nebyly zahazovány.
+
+```diff
+// lib/email/analyzer-pipeline.ts
+-  const fallbackProject = await prisma.project.findFirst({
+-    where: { OR: [{ ownerUserId: userId }, { ownerUserId: null }] },
++  const userProject = await prisma.project.findFirst({
++    where: { OR: [{ ownerUserId: userId }, { ownerUserId: null }] },
+     orderBy: { updatedAt: "desc" },
+     select: { id: true }
+   });
+-  return fallbackProject?.id;
++  if (userProject) return userProject.id;
++  // Inbox/Obecné fallback: any project when user owns none
++  const inboxProject = await prisma.project.findFirst({ ... });
++  return inboxProject?.id;
+}
+```
+
+#### Fix Contact Creation
+
+**Audit výsledků:**
+- Kontakt `hlavackavojtech@gmail.com` byl **úspěšně vytvořen** v jobu `cmooe0u0k0004mtufuc0vp4m3` (1. job). V dalších jobech již existuje — `createdContacts: 0` je správné chování.
+- **Bug nalezen:** Kontakt `hlavackavoj@gmail.com` (vlastní User email!) byl chybně vytvořen jako "External Email Contact" v dřívějším jobu — pipeline nezabraňovala vytváření self-contactů u outbound e-mailů.
+- **Příčina:** Žádná ochrana proti vytváření Contactu pro email vlastníka emailového účtu.
+
+**Fix:** Přidána kontrola `isOwnEmail` v `processEmailMessageForEnrichment`:
+```ts
+const isOwnEmail = userEmail != null && senderEmail === userEmail;
+const senderResolution = isOwnEmail ? null : await resolveOrCreateContact(senderEmail, sender.name);
+```
+- `hlavackavojtech@gmail.com` ≠ `hlavackavoj@gmail.com` → **nie je blokováno**, kontakty se vytváří normálně (testovací výjimka zaručena).
+- Vlastní email → skip, aby nedocházelo k self-contact pollution.
+
+#### Stav po fixi
+- TypeScript kompilace: ✅ bez chyb
+- `resolveProjectIdForActivity`: 5 fallback kroků místo 4, zahazování e-mailů eliminováno
+- `processEmailMessageForEnrichment`: ochrana před self-contact, testovací e-maily procházejí
+
+
 
 ## 2026-05-03 — Bootstrap Admin: eliminace výchozí role VIEWER pro hlavního správce
 

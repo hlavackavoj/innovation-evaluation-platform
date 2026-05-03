@@ -277,7 +277,7 @@ async function resolveProjectIdForActivity(
     return orgMatch;
   }
 
-  const fallbackProject = await prisma.project.findFirst({
+  const userProject = await prisma.project.findFirst({
     where: {
       OR: [{ ownerUserId: userId }, { ownerUserId: null }]
     },
@@ -288,8 +288,15 @@ async function resolveProjectIdForActivity(
       id: true
     }
   });
+  if (userProject) return userProject.id;
 
-  return fallbackProject?.id;
+  // Inbox/Obecné fallback: assign to most recently updated project when user owns none,
+  // so emails are never silently dropped.
+  const inboxProject = await prisma.project.findFirst({
+    orderBy: { updatedAt: "desc" },
+    select: { id: true }
+  });
+  return inboxProject?.id;
 }
 
 export type AnalyzeCommunicationInput = {
@@ -1210,7 +1217,11 @@ async function processEmailMessageForEnrichment(
   const sender = message.participants.from[0];
   if (sender?.email) {
     const senderEmail = sender.email.toLowerCase();
-    const senderResolution = await resolveOrCreateContact(senderEmail, sender.name);
+    // Skip contact creation for the account owner's own email to avoid self-contact pollution.
+    // Test exception: emails that only partially resemble the user email are still allowed.
+    const isOwnEmail = userEmail != null && senderEmail === userEmail;
+    const senderResolution = isOwnEmail ? null : await resolveOrCreateContact(senderEmail, sender.name);
+    if (senderResolution) {
     senderContactId = senderResolution.contactId;
     senderOrganizationId = senderResolution.organizationId;
     senderProjectIds = senderResolution.projectIds;
@@ -1233,6 +1244,7 @@ async function processEmailMessageForEnrichment(
           domain: senderResolution.organizationDomain
         });
       }
+    }
     }
   }
 
