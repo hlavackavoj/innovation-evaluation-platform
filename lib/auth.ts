@@ -1,12 +1,14 @@
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import type { UserRole } from "@prisma/client";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 type KindeRoleLike = { key?: string | null; name?: string | null };
 
-function isMissingKindeIdColumnError(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2022";
+// Canonical P2022 guard per Architecture Standard §3
+function isMissingColumn(error: unknown, column: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; meta?: { column?: unknown } };
+  return e.code === "P2022" && e.meta?.column === column;
 }
 
 function collectRoleKeys(value: unknown): string[] {
@@ -98,7 +100,7 @@ export async function getCurrentUser() {
         return userByKindeId;
       }
     } catch (error) {
-      if (!isMissingKindeIdColumnError(error)) {
+      if (!isMissingColumn(error, "User.kindeId")) {
         throw error;
       }
       console.warn("[auth][getCurrentUser] kindeId column missing (P2022). Falling back to email lookup.");
@@ -130,6 +132,11 @@ export async function ensureUserInDb() {
   const lastName = kindeUser?.family_name?.trim() ?? "";
   const mappedRole = resolveRoleFromSources(kindeRoles, rolesClaim?.value);
   const dbRole = resolveBootstrapAdminRole(email, mappedRole);
+
+  if (dbRole === "ADMIN") {
+    console.log(`[auth] User ${email} recognized as ADMIN - permissions granted.`);
+  }
+
   const fallbackName = kindeUser?.email?.split("@")[0] ?? "Kinde User";
   const resolvedName = `${firstName} ${lastName}`.trim() || kindeUser?.username || fallbackName;
   const shouldDebugAuth = process.env.AUTH_DEBUG === "1";
@@ -159,7 +166,7 @@ export async function ensureUserInDb() {
         select: { id: true }
       });
     } catch (error) {
-      if (!isMissingKindeIdColumnError(error)) {
+      if (!isMissingColumn(error, "User.kindeId")) {
         throw error;
       }
       kindeIdColumnAvailable = false;

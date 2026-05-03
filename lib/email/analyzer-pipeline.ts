@@ -17,8 +17,8 @@ import { detectPhaseFromText } from "@/lib/email/phase-triggers";
 import type { EmailDirection, EmailFetchFilter } from "@/lib/email/types";
 import { dedupeProviderMessages } from "@/lib/email/idempotency";
 import type { NormalizedEmailMessage } from "@/lib/email/types";
-
-type UniversityPhaseSuggestion = "IDEATION" | "CONTRACTING" | "IMPLEMENTATION" | "DELIVERY";
+import type { UniversityPhaseSuggestion } from "@/lib/constants";
+import type { CalendarProposal } from "@/lib/email/analysis-metadata";
 
 type AnalyzerOutput = {
   summary: string;
@@ -65,14 +65,6 @@ type SuggestedTaskCandidate = {
   projectRef: string | null;
   confidence: number;
   reason: string;
-};
-
-type CalendarProposal = {
-  actionType: "SCHEDULE_MEETING" | "DRAFT_RESPONSE";
-  title: string;
-  proposedDateTimeIso: string | null;
-  allDayDateIso: string | null;
-  timezone: "UTC";
 };
 
 type GeminiTaskSuggestionOutput = {
@@ -1043,10 +1035,6 @@ export function matchSuggestedProjectToExisting(
   if (exact) return exact.id;
   const partial = knownProjects.find((project) => normalizeProjectName(project.title).includes(normalized) || normalized.includes(normalizeProjectName(project.title)));
   return partial?.id ?? null;
-}
-
-function normalizeTaskTitle(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function applyUniversityTaskPriority(

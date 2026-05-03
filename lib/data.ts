@@ -14,22 +14,10 @@ import {
 } from "@/lib/recommendations";
 import { createSignedFileUrl } from "@/lib/supabase-storage";
 
-function isMissingActivityAnalysisMetadataColumn(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybe = error as { code?: unknown; meta?: { column?: unknown } };
-  return maybe.code === "P2022" && maybe.meta?.column === "Activity.analysisMetadata";
-}
-
-function isMissingTaskContactIdColumn(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybe = error as { code?: unknown; meta?: { column?: unknown } };
-  return maybe.code === "P2022" && maybe.meta?.column === "Task.contactId";
+function isMissingColumn(error: unknown, column: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; meta?: { column?: unknown } };
+  return e.code === "P2022" && e.meta?.column === column;
 }
 
 async function getRecentActivitiesForDashboard(activityWhere: Record<string, unknown>) {
@@ -60,7 +48,7 @@ async function getRecentActivitiesForDashboard(activityWhere: Record<string, unk
       }
     });
   } catch (error) {
-    if (!isMissingActivityAnalysisMetadataColumn(error)) {
+    if (!isMissingColumn(error, "Activity.analysisMetadata")) {
       throw error;
     }
 
@@ -269,96 +257,26 @@ export async function getProjectById(projectId: string) {
 
   await syncProjectRecommendations(project);
 
-  const hydratedProject = await prisma.project.findFirst({
-    where: projectWhere,
-    include: {
-      organization: true,
-      owner: true,
-      contacts: {
-        include: {
-          contact: {
-            include: {
-              organization: true
-            }
-          }
-        }
-      },
-      activities: {
-        orderBy: {
-          activityDate: "desc"
-        },
-        select: {
-          id: true,
-          type: true,
-          note: true,
-          activityDate: true,
-          emailMessageId: true,
-          emailParentId: true,
-          aiAnalysis: true,
-          user: {
-            select: {
-              name: true
-            }
-          }
-        }
-      },
-      tasks: {
-        orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-        include: {
-          assignedTo: true
-        }
-      },
-      documents: {
-        orderBy: [{ createdAt: "desc" }],
-        include: {
-          template: true
-        }
-      },
-      recommendations: {
-        where: {
-          status: RecommendationStatus.PENDING
-        },
-        orderBy: [{ createdAt: "asc" }]
-      },
-      emailAutomationSetting: {
-        include: {
-          contacts: {
-            include: {
-              contact: true
-            }
-          },
-          domains: true
-        }
-      },
-      emailLinks: {
-        include: {
-          emailMessage: true
-        },
-        orderBy: {
-          createdAt: "desc"
-        },
-        take: 25
-      }
-    }
-  });
+  const [pendingRecommendations, stageTemplates] = await Promise.all([
+    prisma.recommendation.findMany({
+      where: { projectId: project.id, status: RecommendationStatus.PENDING },
+      orderBy: [{ createdAt: "asc" }]
+    }),
+    getStageTemplates(project.stage)
+  ]);
 
-  if (!hydratedProject) {
-    return null;
-  }
-
-  const stageTemplates = await getStageTemplates(hydratedProject.stage);
   const documents = await Promise.all(
-    hydratedProject.documents.map(async (document) => ({
+    project.documents.map(async (document) => ({
       ...document,
       fileUrl: await createSignedFileUrl(document.storagePath)
     }))
   );
 
   return {
-    ...hydratedProject,
+    ...project,
     documents,
     stageTemplates,
-    recommendations: attachTemplatesToRecommendations(hydratedProject.recommendations, stageTemplates)
+    recommendations: attachTemplatesToRecommendations(pendingRecommendations, stageTemplates)
   };
 }
 
@@ -429,7 +347,7 @@ export async function getTasks() {
       }
     });
   } catch (error) {
-    if (!isMissingTaskContactIdColumn(error)) {
+    if (!isMissingColumn(error, "Task.contactId")) {
       throw error;
     }
 
