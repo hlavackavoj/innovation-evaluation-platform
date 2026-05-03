@@ -1,6 +1,33 @@
 # Progress Log
 
-Aktualizováno: 3. 5. 2026 (session 3)
+Aktualizováno: 3. 5. 2026 (session 4)
+
+## 2026-05-03 — Bootstrap Admin: eliminace výchozí role VIEWER pro hlavního správce
+
+### Výsledek
+Omezení "Default Viewer" bylo pro hlavního správce (`hlavackavoj@gmail.com`) **trvale odstraněno** a nahrazeno Bootstrap Admin logikou. Účet má nyní roli `ADMIN` v DB i v každém dalším přihlášení.
+
+### Provedené kroky
+
+**1. Ověření Bootstrap Admin konfigurace (`lib/auth.ts`)**
+- `resolveBootstrapAdminRole()` čte z `AUTH_FORCE_ADMIN_EMAIL`, `AUTH_EMERGENCY_ADMIN_EMAILS`, `BOOTSTRAP_ADMIN_EMAILS`.
+- Záložní hardcoded pole `hardcodedEmergencyAdmins` obsahuje `hlavackavoj@gmail.com` — bootstrap garantován i bez env proměnných.
+- `.env` potvrzuje: `BOOTSTRAP_ADMIN_EMAILS` i `AUTH_EMERGENCY_ADMIN_EMAILS` obsahují správný e-mail.
+
+**2. RBAC Logic — ochrana před VIEWER fallbackem**
+- `ensureUserInDb()` mapuje roli přes `resolveRoleFromSources(kindeRoles, rolesClaim)` → vždy následuje `resolveBootstrapAdminRole(email, mappedRole)`.
+- I kdyby Kinde vrátilo VIEWER, `resolveBootstrapAdminRole` to přepíše na ADMIN pro bootstrap e-mail — bez výjimky.
+
+**3. Přímá DB aktualizace (`scripts/fix-admin-role.ts`)**
+- Skript spuštěn: `npx tsx scripts/fix-admin-role.ts`
+- Výsledek: `User hlavackavoj@gmail.com role set to ADMIN (id: cmointw9c00006fw0prasa92n)`
+- Admin dashboard a skrytá menu jsou nyní aktivní.
+
+**4. Verifikace P2022 isMissingColumn guardů**
+- `lib/auth.ts`: guard aktivní na řádcích 8–12, 103, 169 (oba fallbacky: `getCurrentUser` i `ensureUserInDb`).
+- `scripts/fix-admin-role.ts`: guard aktivní — při chybějícím `kindeId` sloupci pokračuje přes email.
+- `app/api/debug-auth/route.ts`: P2022 guard přítomen.
+- Žádné nové P2022 chyby po `db push` nejsou očekávány.
 
 ## 2026-05-03 — Task/Project UI Fusion, Email Analyzer Fix, Security Hardening
 
