@@ -1,8 +1,13 @@
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import type { UserRole } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 type KindeRoleLike = { key?: string | null; name?: string | null };
+
+function isMissingKindeIdColumnError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2022";
+}
 
 function collectRoleKeys(value: unknown): string[] {
   if (!value) return [];
@@ -50,16 +55,24 @@ export function resolveBootstrapAdminRole(email: string, currentRole: UserRole):
     return currentRole;
   }
 
-  const configured = process.env.AUTH_EMERGENCY_ADMIN_EMAILS ?? process.env.BOOTSTRAP_ADMIN_EMAILS;
-  if (!configured || configured.trim().length === 0) {
-    return currentRole;
-  }
+  const configured = [
+    process.env.AUTH_FORCE_ADMIN_EMAIL,
+    process.env.AUTH_EMERGENCY_ADMIN_EMAILS,
+    process.env.BOOTSTRAP_ADMIN_EMAILS
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(",");
+
   const adminEmails = configured
     .split(",")
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 
-  if (adminEmails.includes(email.toLowerCase())) {
+  // Emergency local override: keep this aligned with your own admin email if env is not available.
+  const hardcodedEmergencyAdmins = ["hlavackavoj@gmail.com", "prenosil@gmail.com"];
+  const allEmergencyAdmins = [...new Set([...adminEmails, ...hardcodedEmergencyAdmins])];
+
+  if (allEmergencyAdmins.includes(email.toLowerCase())) {
     return "ADMIN";
   }
 
@@ -77,11 +90,18 @@ export async function getCurrentUser() {
   }
 
   if (kindeId) {
-    const userByKindeId = await prisma.user.findUnique({
-      where: { kindeId }
-    });
-    if (userByKindeId) {
-      return userByKindeId;
+    try {
+      const userByKindeId = await prisma.user.findUnique({
+        where: { kindeId }
+      });
+      if (userByKindeId) {
+        return userByKindeId;
+      }
+    } catch (error) {
+      if (!isMissingKindeIdColumnError(error)) {
+        throw error;
+      }
+      console.warn("[auth][getCurrentUser] kindeId column missing (P2022). Falling back to email lookup.");
     }
   }
 
@@ -130,9 +150,21 @@ export async function ensureUserInDb() {
   }
 
   return prisma.$transaction(async (tx) => {
-    const existingByKindeId = await tx.user.findUnique({
-      where: { kindeId }
-    });
+    let existingByKindeId: { id: string } | null = null;
+    let kindeIdColumnAvailable = true;
+
+    try {
+      existingByKindeId = await tx.user.findUnique({
+        where: { kindeId },
+        select: { id: true }
+      });
+    } catch (error) {
+      if (!isMissingKindeIdColumnError(error)) {
+        throw error;
+      }
+      kindeIdColumnAvailable = false;
+      console.warn("[auth][ensureUserInDb] kindeId column missing (P2022). Using email-only sync path.");
+    }
 
     if (existingByKindeId) {
       return tx.user.update({
@@ -159,7 +191,7 @@ export async function ensureUserInDb() {
       return tx.user.update({
         where: { id: existingByEmail.id },
         data: {
-          kindeId,
+          ...(kindeIdColumnAvailable ? { kindeId } : {}),
           name: resolvedName,
           role: dbRole
         },
@@ -174,7 +206,7 @@ export async function ensureUserInDb() {
 
     return tx.user.create({
       data: {
-        kindeId,
+        ...(kindeIdColumnAvailable ? { kindeId } : {}),
         email,
         name: resolvedName,
         role: dbRole

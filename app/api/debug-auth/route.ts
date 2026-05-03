@@ -1,4 +1,5 @@
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveRoleFromSources, resolveBootstrapAdminRole } from "@/lib/auth";
@@ -21,16 +22,27 @@ export async function GET() {
     );
   }
 
-  const dbUser = await prisma.user.findFirst({
-    where: kindeId
-      ? {
-          OR: [{ kindeId }, ...(email ? [{ email }] : [])]
-        }
-      : {
-          email: email ?? undefined
-        },
-    select: { id: true, email: true, role: true, updatedAt: true }
-  });
+  let dbUser: { id: string; email: string; role: string; updatedAt: Date } | null = null;
+  try {
+    dbUser = await prisma.user.findFirst({
+      where: kindeId
+        ? {
+            OR: [{ kindeId }, ...(email ? [{ email }] : [])]
+          }
+        : {
+            email: email ?? undefined
+          },
+      select: { id: true, email: true, role: true, updatedAt: true }
+    });
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2022")) {
+      throw error;
+    }
+    dbUser = await prisma.user.findFirst({
+      where: email ? { email } : undefined,
+      select: { id: true, email: true, role: true, updatedAt: true }
+    });
+  }
 
   if (!dbUser || dbUser.role !== "ADMIN") {
     return NextResponse.json(

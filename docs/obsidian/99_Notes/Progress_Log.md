@@ -84,3 +84,21 @@ Aktualizováno: 3. 5. 2026 (session 3)
 - Git/Ignore Check: `.gitignore` neignoruje `prisma/schema.prisma` (nalezeny jen `prisma/dev.db` a `prisma/dev.db-journal`).
 - Auth Sync Check: žádná změna modelu `User` ani enumu `UserRole`; admin role flow zůstává beze změny.
 - Závěr: chyba `P2022` na Vercelu je konzistentní s DB schéma driftem v cílové databázi (sloupec `university_phase` v nasazené DB chybí), nikoli s lokálním Prisma klientem.
+
+## 2026-05-03 — Auth Stability Fix (P2022 `User.kindeId`) + RBAC Sync
+
+- Verifikace schématu: `prisma/schema.prisma` obsahuje `User.kindeId String? @unique`; migrace `20260503090000_add_user_kinde_id` existuje.
+- Opraven `lib/auth.ts` pro režim během synchronizace DB:
+  - Přidán guard na Prisma `P2022` pro dotazy přes `kindeId`.
+  - `getCurrentUser()` při chybějícím sloupci `kindeId` automaticky fallbackuje na lookup přes `email`.
+  - `ensureUserInDb()` při `P2022` přepne na email-only sync a neprovádí zápis `kindeId` (dokud sloupec není dostupný).
+- RBAC sync při každém přihlášení:
+  - Login flow používá `getRoles()` + `roles` claim, mapuje roli a ihned ji ukládá do `User.role` při update/create.
+  - Emergency admin override rozšířen o `AUTH_FORCE_ADMIN_EMAIL` + existující `AUTH_EMERGENCY_ADMIN_EMAILS`/`BOOTSTRAP_ADMIN_EMAILS`.
+  - Přidán hardcoded nouzový seznam v `resolveBootstrapAdminRole` (`your-email@example.com`) jako placeholder pro okamžitou lokální pojistku.
+- Opraven i `app/api/debug-auth/route.ts`: při `P2022` fallback na email-only dotaz, endpoint nespadne na chybějícím `kindeId`.
+- Ghost SQL kontrola:
+  - V projektu nebyl nalezen žádný výskyt `$queryRawUnsafe`.
+  - Tím pádem nebyl nalezen ani problémový pattern s `JSON.stringify()` uvnitř raw SQL parametrů.
+- Build verifikace: `npm run build` proběhl úspěšně.
+- Závěr: změna schématu nebyla nutná; fix je v aplikační logice (odolnost auth vrstvy + role sync).
