@@ -29,7 +29,7 @@ Funkce:
 ## Fáze 4: Email Analyzer v2 ✅ HOTOVO (merged PR #1)
 
 Funkce:
-- OAuth připojení Gmail a Outlook (šifrované tokeny),
+- OAuth připojení Gmail (šifrované tokeny); Outlook/Microsoft OAuth je deferred,
 - synchronizace e-mailů z providera,
 - deduplikace zpráv,
 - 3 úrovně párování s projektem (exact email, domain, keyword),

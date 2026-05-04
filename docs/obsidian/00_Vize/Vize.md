@@ -46,7 +46,7 @@ Nejde jen o evidenci projektů. Hlavní hodnota je v tom, že systém pomáhá o
 - Recommendation engine (rule-based, plně funkční)
 - Autentizace a role přes Kinde Auth
 - Šablony dokumentů napojené na fáze pipeline
-- Email Analyzer v2: OAuth připojení Gmail/Outlook, synchronizace, AI analýza, napojení na aktivity a úkoly
+- Email Analyzer v2: OAuth připojení Gmail, synchronizace, AI analýza, napojení na aktivity a úkoly (Outlook/Microsoft OAuth deferred)
 
 **Plánováno (ještě neimplementováno):**
 - Scoring model (UI + výpočet skóre)

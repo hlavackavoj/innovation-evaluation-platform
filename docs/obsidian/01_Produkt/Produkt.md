@@ -50,7 +50,7 @@ Upload a přiřazení šablon k pipeline fázím, Supabase Storage.
 - Stav: **HOTOVO**
 
 ### 6. Email Analyzer v2
-OAuth připojení Gmail/Outlook, synchronizace e-mailů, AI analýza, napojení aktivit a automatické generování úkolů.
+OAuth připojení Gmail, synchronizace e-mailů, AI analýza, napojení aktivit a automatické generování úkolů. Outlook/Microsoft OAuth je aktuálně deferred.
 - Stav: **HOTOVO** (merged v PR #1)
 - Viz: [[02_CRM/Email Analyzer]]
 

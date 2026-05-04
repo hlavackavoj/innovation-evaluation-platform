@@ -9,7 +9,7 @@ Aktualizováno: 2. 5. 2026.
 - ✅ Recommendation engine (rule-based, 10 pravidel)
 - ✅ Auth a role (Kinde Auth)
 - ✅ Šablony dokumentů (Supabase Storage)
-- ✅ Email Analyzer v2 (Gmail + Outlook OAuth, AI analýza, aktivity, úkoly)
+- ✅ Email Analyzer v2 (Gmail OAuth, AI analýza, aktivity, úkoly; Outlook OAuth deferred)
 - ✅ Ghost migrace fix (`20260430231232_task_contact_link`) + bezpečný DB reset (`reset-db-safe.sh`)
 - ✅ Email Analyzer enrichment feed (interaktivní seznamy + mazání kontaktů/úkolů)
 - ✅ Test mode toggle: `Simulovat testovací data` přes `/api/debug/test-email-analysis`

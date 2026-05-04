@@ -2,7 +2,7 @@
 
 ## Přehled
 
-Email Analyzer v2 umožňuje připojit Gmail nebo Outlook účet, synchronizovat e-mailovou komunikaci, automaticky ji spárovat s projekty a analyzovat pomocí AI (Google Gemini 2.0 Flash Lite).
+Email Analyzer v2 aktuálně podporuje OAuth připojení Gmail účtu, synchronizaci e-mailové komunikace, automatické spárování s projekty a AI analýzu (Google Gemini 2.0 Flash Lite). Outlook/Microsoft OAuth je zatím deferred.
 
 Stav: **AKTIVNĚ ROZVÍJENO** (v2 hotovo duben 2026; university fáze + Draft-to-Task, květen 2026)
 
@@ -32,7 +32,7 @@ Task[] (z nextSteps výstupu AI)
 | `lib/email/matching.ts` | Logika párování e-mailu s projektem |
 | `lib/email/oauth-service.ts` | OAuth token refresh |
 | `lib/email/oauth-state.ts` | Ochrana OAuth state (CSRF) |
-| `lib/email/provider-client.ts` | Gmail a Outlook API volání |
+| `lib/email/provider-client.ts` | Provider API volání (Gmail aktivní, Outlook připravený v kódu) |
 | `lib/email/provider-config.ts` | OAuth konfigurace providerů |
 | `lib/email/token-store.ts` | Šifrované čtení/zápis tokenů |
 | `lib/email/connections.ts` | Helpers pro EmailAccountConnection |
@@ -135,8 +135,6 @@ EMAIL_TOKEN_ENCRYPTION_KEY      # AES klíč pro šifrování tokenů
 EMAIL_OAUTH_STATE_SECRET        # Podpis OAuth state
 GOOGLE_OAUTH_CLIENT_ID
 GOOGLE_OAUTH_CLIENT_SECRET
-MICROSOFT_OAUTH_CLIENT_ID
-MICROSOFT_OAUTH_CLIENT_SECRET
 NEXT_PUBLIC_APP_URL
 EMAIL_SYNC_CRON_SECRET          # Bearer token pro cron endpoint (volitelné)
 ```
@@ -145,10 +143,9 @@ EMAIL_SYNC_CRON_SECRET          # Bearer token pro cron endpoint (volitelné)
 
 Pro nasazení je potřeba nastavit:
 - Google: `https://your-domain.com/api/email/oauth/gmail/callback`
-- Microsoft: `https://your-domain.com/api/email/oauth/outlook/callback`
 
 Gmail scope: `openid`, `email`, `https://www.googleapis.com/auth/gmail.readonly`
-Outlook delegated permissions: `openid`, `email`, `offline_access`, `Mail.Read`, `User.Read`
+Outlook/Microsoft OAuth redirect URI a delegated permissions jsou plánované pro budoucí enablement (mimo aktuální MVP release scope).
 
 ## Implementace
 
@@ -230,7 +227,8 @@ UI používá potvrzení (`confirm`) a po úspěšném smazání provede reaktiv
 ### OAuth callback a perzistence tokenů
 
 - Callback běží v `app/api/email/oauth/[provider]/callback/route.ts`.
-- Pro Gmail se `authorization_code` vyměňuje za tokeny přes `google-auth-library` (`OAuth2Client.getToken(code)`), pro Outlook přes provider token endpoint.
+- Pro Gmail se `authorization_code` vyměňuje za tokeny přes `google-auth-library` (`OAuth2Client.getToken(code)`).
+- Outlook callback route je aktuálně disabled a vrací `provider_disabled` redirect.
 - `access_token` i `refresh_token` se ukládají přes `upsertEmailConnection()` (`lib/email/token-store.ts`).
 - Tokeny jsou v DB uloženy šifrovaně (`encryptedAccessToken`, `encryptedRefreshToken`) pomocí `lib/crypto.ts` a klíče `EMAIL_TOKEN_ENCRYPTION_KEY`.
 - `state` parametr obsahuje podepsaný `userId`, `provider`, `returnPath`; callback validuje podpis přes `parseOAuthState` (CSRF ochrana).

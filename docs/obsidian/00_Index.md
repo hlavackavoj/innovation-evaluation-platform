@@ -23,7 +23,7 @@ Aktualizováno: duben 2026.
 - [[02_CRM/Activities]] – Záznamy práce, e-mailové aktivity
 - [[02_CRM/Tasks]] – Úkoly, automatické generování z AI
 - [[02_CRM/Users]] – Role, Kinde Auth, oprávnění
-- [[02_CRM/Email Analyzer]] – ⭐ Gmail/Outlook sync + AI analýza (produktový přehled)
+- [[02_CRM/Email Analyzer]] – ⭐ Gmail sync + AI analýza (Outlook OAuth deferred)
 - [[02_CRM/Email Analyzer Flow]] – ⭐ Detailní technický flow s Mermaid diagramy
 
 ### Pipeline

@@ -180,6 +180,7 @@ export default async function EmailAnalyzerPage({
   const jobId = readFirst(resolvedSearchParams?.jobId);
   const toast = readFirst(resolvedSearchParams?.toast);
   const error = readFirst(resolvedSearchParams?.error);
+  const provider = readFirst(resolvedSearchParams?.provider);
 
   const initialJob = jobId
     ? await prisma.emailSyncJob.findFirst({
@@ -205,6 +206,9 @@ export default async function EmailAnalyzerPage({
         summary: item.note,
         projectId: item.projectId,
         projectTitle: item.project?.title ?? null,
+        intentCategory: metadata.intentCategory,
+        actionItems: metadata.actionItems,
+        gapAnalysisQuestions: metadata.gapAnalysisQuestions,
         sentimentScore: metadata.sentimentScore,
         isUrgent: metadata.isUrgent,
         suggestedProjectStage: metadata.suggestedProjectStage,
@@ -216,7 +220,12 @@ export default async function EmailAnalyzerPage({
     .filter(
       (item): item is NonNullable<typeof item> =>
         !!item &&
-        (item.suggestedActions.length > 0 || item.followUpQuestions.length > 0 || item.sentimentScore !== null)
+        (item.suggestedActions.length > 0 ||
+          item.followUpQuestions.length > 0 ||
+          item.sentimentScore !== null ||
+          item.intentCategory !== null ||
+          item.actionItems.length > 0 ||
+          item.gapAnalysisQuestions.length > 0)
     );
 
   return (
@@ -259,7 +268,10 @@ export default async function EmailAnalyzerPage({
                 {error === "oauth_missing_access_token" && "Token response did not include access token."}
                 {error === "oauth_token_exchange_failed" && "Token exchange with provider failed."}
                 {error === "oauth_profile_fetch_failed" && "Connected, but failed to fetch Gmail profile."}
-                {error === "provider_disabled" && "This provider is currently disabled."}
+                {error === "provider_disabled" &&
+                  (provider === "outlook"
+                    ? "Outlook OAuth is currently deferred. Gmail is the only supported provider right now."
+                    : "This provider is currently disabled.")}
                 {![
                   "oauth_provider_error",
                   "missing_oauth_code",

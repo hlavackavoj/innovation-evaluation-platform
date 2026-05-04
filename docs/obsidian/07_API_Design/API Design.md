@@ -42,12 +42,12 @@ Kinde Auth handler – login, callback, logout.
 ```
 GET /api/email/oauth/[provider]/connect
 ```
-Zahájení OAuth flow pro Gmail nebo Outlook. Vrátí redirect URL.
+Zahájení OAuth flow. Aktuálně podporuje pouze Gmail. Pro Outlook route vrací redirect na `/email-analyzer?error=provider_disabled&provider=outlook`.
 
 ```
 GET /api/email/oauth/[provider]/callback
 ```
-OAuth callback – exchange code za token, uložení do DB (šifrovaně).
+OAuth callback – pro Gmail dělá exchange code za token a uložení do DB (šifrovaně). Outlook je aktuálně deferred/disabled.
 
 ```
 POST /api/email/oauth/[provider]/disconnect

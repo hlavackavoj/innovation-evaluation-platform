@@ -62,7 +62,7 @@ Kroky, které dávají smysl ihned:
 ## Product next steps
 
 ### Outlook support
-Model `EmailProvider` enum má `OUTLOOK`. Connect endpoint existuje pro `[provider]` parameter. Chybí `MICROSOFT_OAUTH_CLIENT_ID/SECRET` konfigurace a testování. Provider client v `lib/email/providers/` pravděpodobně obsahuje Outlook implementaci (`needs verification`).
+Model `EmailProvider` enum má `OUTLOOK`, ale OAuth connect/callback route je aktuálně záměrně disabled pro Outlook (`provider_disabled`). Microsoft OAuth je odložený jako future enhancement mimo MVP release scope.
 
 ### Scoring UI
 `Project.potentialLevel` (LOW/MEDIUM/HIGH) je v DB, ale nastavuje se ručně. Plánovaný scoring formulář (5 kritérií × 0–20 bodů) by automaticky vypočítal `potentialLevel`. Viz [[11_Implementation/Implementation Plan]] Fáze 5.
@@ -113,7 +113,7 @@ Aktuálně je sync jen jednorázový po OAuth nebo periodický přes cron. Gmail
 
 4. **Storage pro dokumenty** — `lib/supabase-storage.ts` je v kódu, ale `SUPABASE_*` env vars nejsou v `.env.example` viditelné (`needs verification`). Funguje to lokálně?
 
-5. **Outlook OAuth** — je Outlook provider client implementován nebo jen stub?
+5. **Outlook OAuth enablement timing** — kdy má být zrušený `provider_disabled` gate a doplněná kompletní Microsoft OAuth konfigurace?
 
 6. **Recommendation sync side-effect** — stačí mít sync doporučení jako read side-effect, nebo je potřeba explicitní trigger (po editaci projektu)?
 

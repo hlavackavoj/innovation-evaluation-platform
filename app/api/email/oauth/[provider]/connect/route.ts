@@ -8,7 +8,9 @@ export async function GET(
   { params }: { params: { provider: string } }
 ) {
   if (params.provider.toLowerCase() !== "gmail") {
-    return NextResponse.redirect(new URL("/email-analyzer?error=provider_disabled", request.url));
+    return NextResponse.redirect(
+      new URL("/email-analyzer?error=provider_disabled&provider=outlook", request.url)
+    );
   }
 
   const user = await requireCurrentUser();

@@ -9,8 +9,6 @@ Nastav v `Project Settings -> Environment Variables`:
 - `EMAIL_OAUTH_STATE_SECRET` (silný náhodný secret)
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
-- `MICROSOFT_OAUTH_CLIENT_ID`
-- `MICROSOFT_OAUTH_CLIENT_SECRET`
 - `NEXT_PUBLIC_APP_URL` (např. `https://your-domain.com`)
 - `EMAIL_SYNC_CRON_SECRET` (pokud použiješ background sync endpoint)
 
@@ -26,18 +24,12 @@ V Google Cloud Console:
    - `email`
    - `https://www.googleapis.com/auth/gmail.readonly`
 
-## 3. Microsoft OAuth (Outlook / M365)
-V Azure App Registration:
+## 3. Microsoft OAuth (Outlook / M365) — deferred
+Aktuálně není součást MVP release.
 
-1. Přidej redirect URI:
-   - `https://your-domain.com/api/email/oauth/outlook/callback`
-2. Delegated permissions:
-   - `openid`
-   - `email`
-   - `offline_access`
-   - `Mail.Read`
-   - `User.Read`
-3. Udělej admin consent, pokud to tenant vyžaduje.
+- Outlook OAuth je dočasně disabled (`provider_disabled`).
+- Neověřuje se v release checklistu.
+- Plánováno jako future enhancement po stabilizaci Gmail flow.
 
 ## 4. DB migrace
 Po deployi nebo před release spusť:
@@ -52,16 +44,15 @@ Po nasazení otestuj:
 1. Přihlášení do appky funguje.
 2. `Email Analyzer` stránka je dostupná.
 3. `Connect Gmail` dokončí OAuth flow.
-4. `Connect Outlook` dokončí OAuth flow.
-5. `Analyze Communication` vrátí summary a uloží výsledek.
-6. Na detailu projektu funguje `Email Automation` toggle + uložení.
-7. Importované emaily se zobrazí v project timeline/activity.
+4. `Analyze Communication` vrátí summary a uloží výsledek.
+5. Na detailu projektu funguje `Email Automation` toggle + uložení.
+6. Importované emaily se zobrazí v project timeline/activity.
 
 ## 6. Security minimum
 
 1. Reálné secrets nikdy necommitovat (jen `.env.example` placeholders).
 2. Po jakémkoli podezření na leak rotovat:
-   - Google/Microsoft client secret
+   - Google client secret
    - `EMAIL_TOKEN_ENCRYPTION_KEY`
    - `EMAIL_OAUTH_STATE_SECRET`
 3. Omezit přístup k produkčním env vars ve Vercelu jen na potřebné členy týmu.

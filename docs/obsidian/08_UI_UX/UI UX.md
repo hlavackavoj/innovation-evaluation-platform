@@ -67,7 +67,7 @@ Detail projektu obsahuje:
 ## Email Analyzer
 
 Stránka `/email-analyzer` umožňuje:
-- připojit Gmail / Outlook přes OAuth,
+- připojit Gmail přes OAuth (Outlook zatím disabled/deferred),
 - filtrovat e-maily (projekt, provider, směr, datum, kontakt),
 - spustit AI analýzu,
 - zobrazit výsledky (importované e-maily, aktivity, vygenerované úkoly).
