@@ -22,9 +22,24 @@ import { formatDate, formatEnumLabel } from "@/lib/format";
 import { FeedbackToast } from "@/components/feedback-toast";
 import { PipelineStepper } from "@/components/pipeline-stepper";
 import { ProjectDocumentUploadForm } from "@/components/project-document-upload-form";
+import dynamic from "next/dynamic";
 import { ProjectCommunicationTree } from "@/components/ProjectCommunicationTree";
-import { ProjectCanvasView } from "@/components/ProjectCanvasView";
 import { EmailImportForm } from "@/components/EmailImportForm";
+
+const ProjectCanvasView = dynamic(
+  () => import("@/components/ProjectCanvasView").then((m) => m.ProjectCanvasView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[580px] items-center justify-center rounded-xl border border-zinc-700/60 bg-zinc-950">
+        <div className="space-y-3 text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-indigo-400" />
+          <p className="text-sm text-zinc-400">Načítám canvas…</p>
+        </div>
+      </div>
+    )
+  }
+);
 import { Shell } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
