@@ -6,6 +6,7 @@ import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { Navigation } from "@/components/navigation";
 import { ensureUserInDb } from "@/lib/auth";
 import { assertRequiredServerEnv, getMissingKindeEnv } from "@/lib/env";
+import { isPrismaConnectivityError } from "@/lib/prisma-errors";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -40,12 +41,22 @@ export default async function RootLayout({
     assertRequiredServerEnv();
 
     let currentUser: { name: string; role: UserRole } | null = null;
+    let databaseUnavailable = false;
     const { isAuthenticated } = getKindeServerSession();
     const authenticated = await isAuthenticated();
 
     // Never call Prisma/Kinde user profile when the request is unauthenticated.
     if (authenticated && hasRequiredKindeEnv) {
-      currentUser = await ensureUserInDb();
+      try {
+        currentUser = await ensureUserInDb();
+      } catch (error) {
+        if (!isPrismaConnectivityError(error)) {
+          throw error;
+        }
+
+        databaseUnavailable = true;
+        console.error("[layout] Database is temporarily unavailable. Rendering without user navigation.", error);
+      }
     }
     return (
       <html lang="en" className={inter.variable}>
@@ -53,6 +64,11 @@ export default async function RootLayout({
           {!hasRequiredKindeEnv ? (
             <div className="mx-auto mt-6 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               Auth konfigurace není kompletní (`KINDE_*` proměnné). Aplikace běží v omezeném režimu bez přihlášení.
+            </div>
+          ) : null}
+          {databaseUnavailable ? (
+            <div className="mx-auto mt-6 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              Databáze je dočasně nedostupná. Aplikace běží v omezeném režimu.
             </div>
           ) : null}
           {currentUser ? <Navigation userName={currentUser.name} userRole={currentUser.role} /> : null}
