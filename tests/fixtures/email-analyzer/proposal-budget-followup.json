@@ -1,0 +1,12 @@
+{
+  "summary": "Client asks for budget and timeline in proposal response.",
+  "intentCategory": "PROPOSAL",
+  "themes": ["budget", "timeline"],
+  "risks": [],
+  "actionItems": [
+    { "task": "Prepare budget table", "deadline": null, "assignee_suggestion": "Finance analyst" }
+  ],
+  "gapAnalysisQuestions": [
+    "What decision date is expected?"
+  ]
+}

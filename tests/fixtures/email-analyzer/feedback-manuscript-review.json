@@ -1,0 +1,10 @@
+{
+  "summary": "Reviewer sent manuscript comments requiring revisions.",
+  "intentCategory": "FEEDBACK",
+  "themes": ["review comments", "revision"],
+  "risks": ["Potential publication delay"],
+  "actionItems": [
+    { "task": "Consolidate reviewer feedback", "deadline": "2026-05-10", "assignee_suggestion": "Lead author" }
+  ],
+  "gapAnalysisQuestions": []
+}

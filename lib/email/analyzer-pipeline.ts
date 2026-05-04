@@ -104,6 +104,7 @@ const WEEKDAY_ALIASES = new Map<string, number>([
   ["friday", 5],
   ["fri", 5],
   ["patek", 5],
+  ["patku", 5],
   ["saturday", 6],
   ["sat", 6],
   ["sobota", 6],
@@ -528,6 +529,8 @@ function parseAbsoluteDate(rawValue: string, referenceDate: Date): string | null
       const date = new Date(year, monthIndex, day);
       if (!Number.isNaN(date.getTime()) && isSameCalendarDate(date, year, monthIndex, day)) return toIsoDate(date);
     }
+
+    return null;
   }
 
   const nativeDate = new Date(trimmed);
@@ -560,6 +563,11 @@ function normalizeDeadlineToIso(value: unknown, referenceDate: Date): string | n
   if (weekdayDate) return weekdayDate;
 
   return parseAbsoluteDate(trimmed, referenceDate);
+}
+
+// Test-only export for deterministic parser regression tests.
+export function normalizeDeadlineToIsoForReferenceDate(value: unknown, referenceDate: Date): string | null {
+  return normalizeDeadlineToIso(value, referenceDate);
 }
 
 function parseActionItems(value: unknown, referenceDate: Date): AnalyzerOutput["actionItems"] {

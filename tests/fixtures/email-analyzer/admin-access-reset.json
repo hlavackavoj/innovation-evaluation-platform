@@ -1,0 +1,10 @@
+{
+  "summary": "Request to reset account access for external mentor.",
+  "intentCategory": "ADMIN",
+  "themes": ["access", "support"],
+  "risks": ["User blocked"],
+  "actionItems": [
+    { "task": "Reset account access", "deadline": null, "assignee_suggestion": "System admin" }
+  ],
+  "gapAnalysisQuestions": []
+}

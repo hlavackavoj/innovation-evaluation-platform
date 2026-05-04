@@ -1,0 +1,10 @@
+{
+  "summary": "Let's schedule a sync with the startup team.",
+  "intentCategory": "MEETING",
+  "themes": ["coordination", "timeline"],
+  "risks": [],
+  "actionItems": [
+    { "task": "Book a 30-minute meeting", "deadline": "2026-05-08", "assignee_suggestion": "Project coordinator" }
+  ],
+  "gapAnalysisQuestions": []
+}

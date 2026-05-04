@@ -1,0 +1,12 @@
+{
+  "summary": "Need a proposal draft and scope definition for grant call.",
+  "intentCategory": "PROPOSAL",
+  "themes": ["grant proposal", "scope"],
+  "risks": ["Undefined scope"],
+  "actionItems": [
+    { "task": "Draft proposal outline", "deadline": "2026-05-12", "assignee_suggestion": "Research manager" }
+  ],
+  "gapAnalysisQuestions": [
+    "What budget range is approved?"
+  ]
+}

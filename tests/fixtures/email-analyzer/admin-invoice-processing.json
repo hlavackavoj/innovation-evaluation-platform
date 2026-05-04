@@ -1,0 +1,10 @@
+{
+  "summary": "Invoice details and payment process clarification required.",
+  "intentCategory": "ADMIN",
+  "themes": ["invoice", "operations"],
+  "risks": [],
+  "actionItems": [
+    { "task": "Verify invoice reference number", "deadline": null, "assignee_suggestion": "Back office" }
+  ],
+  "gapAnalysisQuestions": []
+}

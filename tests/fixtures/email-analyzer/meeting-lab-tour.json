@@ -1,0 +1,10 @@
+{
+  "summary": "The partner requested a lab tour meeting next week.",
+  "intentCategory": "MEETING",
+  "themes": ["site visit", "partner engagement"],
+  "risks": ["No confirmed date yet"],
+  "actionItems": [
+    { "task": "Propose 3 meeting slots", "deadline": null, "assignee_suggestion": "Operations lead" }
+  ],
+  "gapAnalysisQuestions": []
+}

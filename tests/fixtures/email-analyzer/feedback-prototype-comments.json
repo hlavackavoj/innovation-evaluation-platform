@@ -1,0 +1,10 @@
+{
+  "summary": "Pilot partner provided usability feedback for the prototype.",
+  "intentCategory": "FEEDBACK",
+  "themes": ["usability", "prototype"],
+  "risks": [],
+  "actionItems": [
+    { "task": "Prioritize top 3 requested changes", "deadline": null, "assignee_suggestion": "Product owner" }
+  ],
+  "gapAnalysisQuestions": []
+}
