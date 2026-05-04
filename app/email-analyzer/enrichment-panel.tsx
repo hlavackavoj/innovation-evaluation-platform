@@ -36,6 +36,7 @@ type AnalysisResult = {
   matchedContacts: number;
   suggestedContacts: number;
   generatedTasks: number;
+  unassignedEmails: number;
   createdEntities?: CreatedEntities;
 };
 
@@ -58,12 +59,20 @@ type AiRecommendation = {
   summary: string;
   projectId: string | null;
   projectTitle: string | null;
+  intentCategory: "MEETING" | "PROPOSAL" | "FEEDBACK" | "ADMIN" | null;
+  actionItems: Array<{
+    task: string;
+    deadline: string | null;
+    assigneeSuggestion: string | null;
+  }>;
+  gapAnalysisQuestions: string[];
   sentimentScore: number | null;
   isUrgent: boolean;
   suggestedProjectStage: string | null;
   calendarProposals: CalendarProposal[];
   suggestedActions: SuggestedAction[];
   followUpQuestions: string[];
+  analysisStatus: "UNASSIGNED_PROJECT" | "PENDING" | "ANALYZED" | null;
 };
 
 export function EnrichmentPanel({
@@ -107,6 +116,12 @@ export function EnrichmentPanel({
 
   const hasAiRecommendations = aiRecommendations.length > 0;
   const contactActionItems = (summary?.matchedContacts ?? 0) + (summary?.suggestedContacts ?? 0);
+  const intentLabels: Record<NonNullable<AiRecommendation["intentCategory"]>, string> = {
+    MEETING: "Meeting",
+    PROPOSAL: "Proposal",
+    FEEDBACK: "Feedback",
+    ADMIN: "Admin"
+  };
 
   const getSentimentStyle = (score: number | null) => {
     if (score === null) return "border-zinc-200 bg-white";
@@ -158,6 +173,7 @@ export function EnrichmentPanel({
             matchedContacts: payload.enrichmentResult.matchedContacts,
             suggestedContacts: payload.enrichmentResult.suggestedContacts,
             generatedTasks: payload.enrichmentResult.generatedTasks,
+            unassignedEmails: 0,
             createdEntities: payload.enrichmentResult.createdEntities
           };
           setSummary(result);
@@ -386,10 +402,17 @@ export function EnrichmentPanel({
               <p>Navržené nové kontakty: <strong>{summary.suggestedContacts}</strong></p>
               <p>Kontaktní akce ke kontrole: <strong>{contactActionItems}</strong></p>
               <p>Vygenerované úkoly: <strong>{summary.generatedTasks}</strong></p>
+              <p>Nepřiřazené e-maily: <strong>{summary.unassignedEmails ?? 0}</strong></p>
               {summary.suggestedContacts > 0 && (
                 <p className="mt-1 text-amber-700">
                   Navržené kontakty vyžadují přiřazení k projektu — viz sekce Výsledky analýzy.
                 </p>
+              )}
+              {(summary.unassignedEmails ?? 0) > 0 && (
+                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-800">
+                  Některé e-maily nebyly možné spolehlivě přiřadit k projektu. Z bezpečnostních důvodů nebyly přiřazeny k
+                  náhodnému projektu a čekají na ruční triage.
+                </div>
               )}
               {summary.importedEmails === 0 && (
                 <p className="mt-2 text-zinc-600">
@@ -439,6 +462,11 @@ export function EnrichmentPanel({
                         "Unlinked"
                       )}
                     </p>
+                    {recommendation.analysisStatus === "UNASSIGNED_PROJECT" && (
+                      <p className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                        Nepřiřazeno k projektu · Vyžaduje ruční přiřazení
+                      </p>
+                    )}
                   </div>
                   <div className="text-right text-xs text-zinc-600">
                     <p>Sentiment: {recommendation.sentimentScore ?? "N/A"}/10</p>
@@ -446,6 +474,31 @@ export function EnrichmentPanel({
                     <p>Stage: {recommendation.suggestedProjectStage ?? "N/A"}</p>
                   </div>
                 </div>
+                {recommendation.intentCategory && (
+                  <div className="mt-2">
+                    <span className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-zinc-700">
+                      Intent: {intentLabels[recommendation.intentCategory]}
+                    </span>
+                  </div>
+                )}
+
+                {recommendation.actionItems.length > 0 && (
+                  <div className="mt-3 space-y-2 rounded-md border border-zinc-200 bg-white p-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600">Akční kroky</p>
+                    {recommendation.actionItems.map((item, index) => (
+                      <div key={`${recommendation.activityId}-action-item-${index}`} className="rounded border border-zinc-200 px-2 py-1.5">
+                        <p className="text-sm text-zinc-900">{item.task}</p>
+                        {(item.deadline || item.assigneeSuggestion) && (
+                          <p className="text-xs text-zinc-500">
+                            {item.deadline ? `Deadline: ${item.deadline}` : ""}
+                            {item.deadline && item.assigneeSuggestion ? " · " : ""}
+                            {item.assigneeSuggestion ? `Doporučený řešitel: ${item.assigneeSuggestion}` : ""}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {recommendation.suggestedActions.length > 0 && (
                   <div className="mt-3 space-y-2">
@@ -533,6 +586,17 @@ export function EnrichmentPanel({
                           {copiedQuestion === question ? "Zkopírováno" : "Kopírovat"}
                         </Button>
                       </div>
+                    ))}
+                  </div>
+                )}
+
+                {recommendation.gapAnalysisQuestions.length > 0 && (
+                  <div className="mt-3 space-y-2 rounded-md border border-zinc-200 bg-white p-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600">Otázky k doplnění</p>
+                    {recommendation.gapAnalysisQuestions.map((question, index) => (
+                      <p key={`${recommendation.activityId}-gap-question-${index}`} className="text-sm text-zinc-800">
+                        {question}
+                      </p>
                     ))}
                   </div>
                 )}

@@ -21,6 +21,15 @@ export type CalendarProposal = {
 };
 
 export type ParsedAnalysisMetadata = {
+  analysisStatus: "UNASSIGNED_PROJECT" | "PENDING" | "ANALYZED" | null;
+  analysisReason: string | null;
+  intentCategory: "MEETING" | "PROPOSAL" | "FEEDBACK" | "ADMIN" | null;
+  actionItems: Array<{
+    task: string;
+    deadline: string | null;
+    assigneeSuggestion: string | null;
+  }>;
+  gapAnalysisQuestions: string[];
   sentimentScore: number | null;
   isUrgent: boolean;
   suggestedProjectStage: PipelineStage | null;
@@ -33,7 +42,18 @@ export type ParsedAnalysisMetadata = {
 
 const STAGES = new Set<PipelineStage>(Object.values(PipelineStage));
 const ACTION_TYPES = new Set<SuggestedActionType>(["SCHEDULE_MEETING", "DRAFT_RESPONSE"]);
+const INTENT_CATEGORIES = new Set<NonNullable<ParsedAnalysisMetadata["intentCategory"]>>([
+  "MEETING",
+  "PROPOSAL",
+  "FEEDBACK",
+  "ADMIN"
+]);
 const UNIVERSITY_PHASES = new Set<UniversityPhaseSuggestion>(["IDEATION", "CONTRACTING", "IMPLEMENTATION", "DELIVERY"]);
+const ANALYSIS_STATUSES = new Set<NonNullable<ParsedAnalysisMetadata["analysisStatus"]>>([
+  "UNASSIGNED_PROJECT",
+  "PENDING",
+  "ANALYZED"
+]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -180,11 +200,66 @@ function parseFollowUpQuestions(value: unknown): string[] {
     .slice(0, 3);
 }
 
+function parseIntentCategory(value: unknown): ParsedAnalysisMetadata["intentCategory"] {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  return INTENT_CATEGORIES.has(normalized as NonNullable<ParsedAnalysisMetadata["intentCategory"]>)
+    ? (normalized as NonNullable<ParsedAnalysisMetadata["intentCategory"]>)
+    : null;
+}
+
+function parseAnalysisStatus(value: unknown): ParsedAnalysisMetadata["analysisStatus"] {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  return ANALYSIS_STATUSES.has(normalized as NonNullable<ParsedAnalysisMetadata["analysisStatus"]>)
+    ? (normalized as NonNullable<ParsedAnalysisMetadata["analysisStatus"]>)
+    : null;
+}
+
+function parseActionItems(value: unknown): ParsedAnalysisMetadata["actionItems"] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const row = asRecord(item);
+      if (!row) return null;
+      const task = typeof row.task === "string" ? row.task.trim() : "";
+      if (!task) return null;
+      const deadline = typeof row.deadline === "string" ? row.deadline.trim() || null : null;
+      const assigneeSuggestion =
+        typeof row.assigneeSuggestion === "string"
+          ? row.assigneeSuggestion.trim() || null
+          : typeof row.assignee_suggestion === "string"
+            ? row.assignee_suggestion.trim() || null
+            : null;
+      return {
+        task,
+        deadline,
+        assigneeSuggestion
+      };
+    })
+    .filter((item): item is ParsedAnalysisMetadata["actionItems"][number] => !!item);
+}
+
+function parseGapAnalysisQuestions(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function parseAnalysisMetadata(value: unknown): ParsedAnalysisMetadata | null {
   const data = asRecord(value);
   if (!data) return null;
 
   return {
+    analysisStatus: parseAnalysisStatus(data.analysisStatus),
+    analysisReason: typeof data.reason === "string" && data.reason.trim() ? data.reason.trim() : null,
+    intentCategory: parseIntentCategory(data.intentCategory),
+    actionItems: parseActionItems(data.actionItems),
+    gapAnalysisQuestions: parseGapAnalysisQuestions(data.gapAnalysisQuestions),
     sentimentScore: parseSentimentScore(data.sentimentScore),
     isUrgent: Boolean(data.isUrgent),
     suggestedProjectStage: parseSuggestedProjectStage(data.suggestedProjectStage),

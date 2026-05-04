@@ -8,65 +8,8 @@ import { getCurrentUserEmailConnections } from "@/lib/email/connections";
 import { analyzeCommunicationAction, disconnectConnectionAction } from "@/app/email-analyzer/actions";
 import { ConnectGmailButton } from "@/components/ConnectGmailButton";
 import { EnrichmentPanel } from "@/app/email-analyzer/enrichment-panel";
-import { ProjectPriority } from "@prisma/client";
 import { parseAnalysisMetadata } from "@/lib/email/analysis-metadata";
-
-function parsePriority(value: unknown): ProjectPriority {
-  if (value === ProjectPriority.HIGH || value === ProjectPriority.MEDIUM || value === ProjectPriority.LOW) {
-    return value;
-  }
-  return ProjectPriority.MEDIUM;
-}
-
-function parseSummary(summary: unknown) {
-  if (!summary || typeof summary !== "object") {
-    return null;
-  }
-
-  const data = summary as Record<string, unknown>;
-  const created = (data.createdEntities as Record<string, unknown> | undefined) ?? {};
-  const contactsRaw = Array.isArray(created.contacts) ? created.contacts : [];
-  const tasksRaw = Array.isArray(created.tasks) ? created.tasks : [];
-  const organizationsRaw = Array.isArray(created.organizations) ? created.organizations : [];
-
-  return {
-    importedEmails: Number(data.importedEmails ?? 0),
-    matchedContacts: Number(data.matchedContacts ?? 0),
-    suggestedContacts: Number(data.suggestedContacts ?? 0),
-    generatedTasks: Number(data.generatedTasks ?? 0),
-    createdEntities: {
-      contacts: contactsRaw.map((item) => {
-        const row = item as Record<string, unknown>;
-        return {
-          id: String(row.id ?? ""),
-          name: String(row.name ?? row.email ?? "Unknown contact"),
-          email: String(row.email ?? ""),
-          organizationName: typeof row.organizationName === "string" ? row.organizationName : null
-        };
-      }),
-      tasks: tasksRaw.map((item) => {
-        const row = item as Record<string, unknown>;
-        return {
-          id: String(row.id ?? ""),
-          title: String(row.title ?? "Untitled task"),
-          priority: parsePriority(row.priority),
-          suggestionStatus: String(row.suggestionStatus ?? "SUGGESTED"),
-          contactId: typeof row.contactId === "string" ? row.contactId : null,
-          contactName: typeof row.contactName === "string" ? row.contactName : null,
-          projectId: typeof row.projectId === "string" ? row.projectId : null,
-          projectTitle: typeof row.projectTitle === "string" ? row.projectTitle : null
-        };
-      }),
-      organizations: organizationsRaw.map((item) => {
-        const row = item as Record<string, unknown>;
-        return {
-          id: String(row.id ?? ""),
-          domain: String(row.domain ?? row.website ?? "unknown-domain")
-        };
-      })
-    }
-  };
-}
+import { parseEmailSyncSummary } from "@/lib/email/sync-summary";
 
 function isMissingActivityAnalysisMetadataColumn(error: unknown): boolean {
   if (!error || typeof error !== "object") {
@@ -194,7 +137,7 @@ export default async function EmailAnalyzerPage({
       })
     : null;
 
-  const initialSummary = parseSummary(initialJob?.summary ?? null);
+  const initialSummary = parseEmailSyncSummary(initialJob?.summary ?? null);
   const aiRecommendations = recentInsights
     .map((item) => {
       const metadata = parseAnalysisMetadata(item.analysisMetadata);
@@ -214,7 +157,8 @@ export default async function EmailAnalyzerPage({
         suggestedProjectStage: metadata.suggestedProjectStage,
         calendarProposals: metadata.calendarProposals,
         suggestedActions: metadata.suggestedActions,
-        followUpQuestions: metadata.followUpQuestions
+        followUpQuestions: metadata.followUpQuestions,
+        analysisStatus: metadata.analysisStatus
       };
     })
     .filter(
@@ -225,7 +169,8 @@ export default async function EmailAnalyzerPage({
           item.sentimentScore !== null ||
           item.intentCategory !== null ||
           item.actionItems.length > 0 ||
-          item.gapAnalysisQuestions.length > 0)
+          item.gapAnalysisQuestions.length > 0 ||
+          item.analysisStatus === "UNASSIGNED_PROJECT")
     );
 
   return (
