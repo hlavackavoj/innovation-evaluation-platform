@@ -15,6 +15,7 @@ import { refreshAccessToken } from "@/lib/email/oauth-service";
 import { matchEmailToProject } from "@/lib/email/matching";
 import { resolveProjectAssignment } from "@/lib/email/project-resolution";
 import { detectPhaseFromText } from "@/lib/email/phase-triggers";
+import { GEMINI_EMAIL_ANALYZER_MODEL } from "@/lib/email/gemini-model";
 import type { EmailDirection, EmailFetchFilter } from "@/lib/email/types";
 import { dedupeProviderMessages } from "@/lib/email/idempotency";
 import type { NormalizedEmailMessage } from "@/lib/email/types";
@@ -1015,7 +1016,7 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
   }
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = client.getGenerativeModel({ model: GEMINI_EMAIL_ANALYZER_MODEL });
   const analysisDate = toIsoDate(new Date());
   const systemPrompt = [
     "You are an email CRM analyzer for a university innovation platform. Return strict JSON only.",
@@ -1083,7 +1084,7 @@ async function analyzeTaskSuggestionsWithGemini(params: {
   if (!apiKey) return { projects: [], tasks: [] };
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = client.getGenerativeModel({ model: GEMINI_EMAIL_ANALYZER_MODEL });
   const prompt = [
     "Return strict JSON only.",
     "Extract project and task proposals from CRM communication.",

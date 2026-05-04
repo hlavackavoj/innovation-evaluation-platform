@@ -10,6 +10,7 @@ import {
   requireCanModifyCrmRecords,
   requireProjectAccess
 } from "@/lib/authorization";
+import { GEMINI_EMAIL_ANALYZER_MODEL } from "@/lib/email/gemini-model";
 import { getGeminiApiKey } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { parseProjectFormData } from "@/lib/project-form";
@@ -370,7 +371,7 @@ export async function processCommunicationAction(projectId: string, formData: Fo
   }
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = client.getGenerativeModel({ model: GEMINI_EMAIL_ANALYZER_MODEL });
   const sanitizedContent = content
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[REDACTED_EMAIL]")
     .replace(/\+?\d[\d\s\-()]{7,}\d/g, "[REDACTED_PHONE]")
