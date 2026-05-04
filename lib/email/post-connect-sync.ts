@@ -10,6 +10,7 @@ import { fetchProviderMessages, computeBodyHash } from "@/lib/email/provider-cli
 import { dedupeProviderMessages } from "@/lib/email/idempotency";
 import { getDecryptedConnection, updateConnectionToken } from "@/lib/email/token-store";
 import { refreshAccessToken } from "@/lib/email/oauth-service";
+import { resolveProjectAssignment } from "@/lib/email/project-resolution";
 
 function extractDomain(email?: string | null): string | null {
   if (!email) return null;
@@ -132,32 +133,24 @@ async function resolveContact(email: string, name?: string) {
 }
 
 async function resolveProjectIdForActivity(userId: string, contactProjectIds: string[], organizationId?: string | null) {
-  if (contactProjectIds.length > 0) {
-    return contactProjectIds[0];
-  }
+  const projectByOrg = organizationId
+    ? await prisma.project.findFirst({
+        where: {
+          organizationId,
+          ownerUserId: userId
+        },
+        orderBy: {
+          updatedAt: "desc"
+        },
+        select: {
+          id: true
+        }
+      })
+    : null;
 
-  if (organizationId) {
-    const projectByOrg = await prisma.project.findFirst({
-      where: {
-        organizationId,
-        OR: [{ ownerUserId: userId }, { ownerUserId: null }]
-      },
-      orderBy: {
-        updatedAt: "desc"
-      },
-      select: {
-        id: true
-      }
-    });
-
-    if (projectByOrg) {
-      return projectByOrg.id;
-    }
-  }
-
-  const fallbackProject = await prisma.project.findFirst({
+  const userOwnedProject = await prisma.project.findFirst({
     where: {
-      OR: [{ ownerUserId: userId }, { ownerUserId: null }]
+      ownerUserId: userId
     },
     orderBy: {
       updatedAt: "desc"
@@ -166,8 +159,11 @@ async function resolveProjectIdForActivity(userId: string, contactProjectIds: st
       id: true
     }
   });
-
-  return fallbackProject?.id;
+  return resolveProjectAssignment({
+    contactProjectIds,
+    organizationProjectId: projectByOrg?.id ?? null,
+    userOwnedProjectId: userOwnedProject?.id ?? null
+  }).projectId;
 }
 
 export async function runPostConnectInitialSync(input: {
@@ -212,6 +208,7 @@ export async function runPostConnectInitialSync(input: {
   let imported = 0;
   let activities = 0;
   let leadsCreated = 0;
+  let unassigned = 0;
 
   for (const message of messages) {
     const persistedMessage = await prisma.emailMessage.upsert({
@@ -289,6 +286,39 @@ export async function runPostConnectInitialSync(input: {
     const projectId = await resolveProjectIdForActivity(input.userId, projectIds, contact?.organizationId);
 
     if (!projectId) {
+      unassigned += 1;
+      await prisma.activity.upsert({
+        where: {
+          emailMessageId: persistedMessage.providerMessageId
+        },
+        create: {
+          projectId: null,
+          userId: input.userId,
+          type: ActivityType.EMAIL,
+          note: message.snippet?.trim() || message.subject?.trim() || `Imported email from ${senderEmail} (unassigned)`,
+          emailMessageId: persistedMessage.providerMessageId,
+          emailParentId: persistedMessage.providerParentMessageId,
+          analysisMetadata: {
+            analysisStatus: "UNASSIGNED_PROJECT",
+            reason: "No contact/organization/user-owned project match.",
+            processedAt: new Date().toISOString()
+          } satisfies Prisma.InputJsonValue,
+          activityDate: persistedMessage.sentAt
+        },
+        update: {
+          projectId: null,
+          userId: input.userId,
+          note: message.snippet?.trim() || message.subject?.trim() || `Imported email from ${senderEmail} (unassigned)`,
+          emailParentId: persistedMessage.providerParentMessageId,
+          analysisMetadata: {
+            analysisStatus: "UNASSIGNED_PROJECT",
+            reason: "No contact/organization/user-owned project match.",
+            processedAt: new Date().toISOString()
+          } satisfies Prisma.InputJsonValue,
+          activityDate: persistedMessage.sentAt
+        }
+      });
+      activities += 1;
       continue;
     }
 
@@ -347,9 +377,18 @@ export async function runPostConnectInitialSync(input: {
     }
   });
 
+  if (unassigned > 0) {
+    console.warn("[post-connect-sync] Unassigned emails imported", {
+      connectionId: connection.id,
+      userId: input.userId,
+      unassignedEmails: unassigned
+    });
+  }
+
   return {
     imported,
     activities,
-    leadsCreated
+    leadsCreated,
+    unassigned
   };
 }

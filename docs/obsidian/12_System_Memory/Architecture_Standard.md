@@ -151,7 +151,8 @@ await prisma.user.upsert({
 
 **Role hierarchie (sestupně):** `ADMIN > MANAGER > EVALUATOR > USER > VIEWER`
 
-**Bootstrap admin:** Určen přes `BOOTSTRAP_ADMIN_EMAILS` env var — tento mechanismus musí být v `resolveBootstrapAdminRole()` a nesmí se duplikovat.
+**Bootstrap admin:** Určen pouze přes env (`AUTH_FORCE_ADMIN_EMAIL`, `AUTH_EMERGENCY_ADMIN_EMAILS`, `BOOTSTRAP_ADMIN_EMAILS`) — tento mechanismus musí být v `resolveBootstrapAdminRole()` a nesmí se duplikovat.
+V kódu nesmí být žádné hardcoded admin e-maily.
 
 ---
 

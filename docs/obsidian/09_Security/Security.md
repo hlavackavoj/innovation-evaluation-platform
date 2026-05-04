@@ -16,6 +16,8 @@ Kinde spravuje uživatele externě. Při každém přihlášení se volá `ensur
 ### Bootstrap admin
 
 Env var `BOOTSTRAP_ADMIN_EMAILS` (CSV) – e-maily, které dostanou roli ADMIN bez ohledu na Kinde roli. Slouží k prvotnímu nastavení systému.
+Další podporované env proměnné pro bootstrap/escalation jsou `AUTH_FORCE_ADMIN_EMAIL` a `AUTH_EMERGENCY_ADMIN_EMAILS`.
+V kódu nesmí existovat žádné hardcoded admin e-maily; admin escalation je pouze env-based.
 
 ## Role-based access control
 

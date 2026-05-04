@@ -13,6 +13,7 @@ import { fetchProviderMessages, computeBodyHash } from "@/lib/email/provider-cli
 import { getDecryptedConnection, updateConnectionToken } from "@/lib/email/token-store";
 import { refreshAccessToken } from "@/lib/email/oauth-service";
 import { matchEmailToProject } from "@/lib/email/matching";
+import { resolveProjectAssignment } from "@/lib/email/project-resolution";
 import { detectPhaseFromText } from "@/lib/email/phase-triggers";
 import type { EmailDirection, EmailFetchFilter } from "@/lib/email/types";
 import { dedupeProviderMessages } from "@/lib/email/idempotency";
@@ -321,12 +322,16 @@ async function resolveOrCreateContact(email: string, name?: string) {
  * Used for automatic email-to-project matching when no explicit project is provided.
  */
 export async function matchProjectForSender(
-  organizationId: string | null
+  organizationId: string | null,
+  userId: string
 ): Promise<string | null> {
   if (!organizationId) return null;
 
   const project = await prisma.project.findFirst({
-    where: { organizationId },
+    where: {
+      organizationId,
+      ownerUserId: userId
+    },
     orderBy: { updatedAt: "desc" },
     select: { id: true }
   });
@@ -340,22 +345,10 @@ async function resolveProjectIdForActivity(
   contactProjectIds: string[] = [],
   organizationId?: string | null
 ) {
-  if (explicitProjectId) {
-    return explicitProjectId;
-  }
-
-  if (contactProjectIds.length > 0) {
-    return contactProjectIds[0];
-  }
-
-  const orgMatch = await matchProjectForSender(organizationId ?? null);
-  if (orgMatch) {
-    return orgMatch;
-  }
-
+  const orgMatch = await matchProjectForSender(organizationId ?? null, userId);
   const userProject = await prisma.project.findFirst({
     where: {
-      OR: [{ ownerUserId: userId }, { ownerUserId: null }]
+      ownerUserId: userId
     },
     orderBy: {
       updatedAt: "desc"
@@ -364,15 +357,13 @@ async function resolveProjectIdForActivity(
       id: true
     }
   });
-  if (userProject) return userProject.id;
-
-  // Inbox/Obecné fallback: assign to most recently updated project when user owns none,
-  // so emails are never silently dropped.
-  const inboxProject = await prisma.project.findFirst({
-    orderBy: { updatedAt: "desc" },
-    select: { id: true }
+  const resolution = resolveProjectAssignment({
+    explicitProjectId,
+    contactProjectIds,
+    organizationProjectId: orgMatch,
+    userOwnedProjectId: userProject?.id ?? null
   });
-  return inboxProject?.id;
+  return resolution.projectId;
 }
 
 export type AnalyzeCommunicationInput = {
@@ -1205,6 +1196,7 @@ type PersistEmailContext = {
     createdOrganizations: number;
     createdContacts: number;
     createdActivities: number;
+    unassignedEmails: number;
   };
   createdEntities: {
     contacts: Array<{ id: string; name: string; email: string; organizationName: string | null }>;
@@ -1367,6 +1359,45 @@ async function processEmailMessageForEnrichment(
   );
 
   if (!projectIdForActivity) {
+    context.stats.unassignedEmails += 1;
+    await prisma.activity.upsert({
+      where: {
+        emailMessageId: persistedMessage.providerMessageId
+      },
+      create: {
+        projectId: null,
+        userId: context.userId,
+        type: ActivityType.EMAIL,
+        note: message.snippet?.trim() || message.subject?.trim() || "Imported email (unassigned project)",
+        bodyContent: message.bodyText ?? null,
+        emailMessageId: persistedMessage.providerMessageId,
+        emailParentId: persistedMessage.providerParentMessageId,
+        aiAnalysis: Prisma.JsonNull,
+        analysisMetadata: {
+          analysisStatus: "UNASSIGNED_PROJECT",
+          reason: "No explicit/contact/organization/user-owned project match.",
+          direction,
+          processedAt: new Date().toISOString()
+        } satisfies Prisma.InputJsonValue,
+        activityDate: persistedMessage.sentAt
+      },
+      update: {
+        projectId: null,
+        userId: context.userId,
+        note: message.snippet?.trim() || message.subject?.trim() || "Imported email (unassigned project)",
+        bodyContent: message.bodyText ?? null,
+        emailParentId: persistedMessage.providerParentMessageId,
+        aiAnalysis: Prisma.JsonNull,
+        analysisMetadata: {
+          analysisStatus: "UNASSIGNED_PROJECT",
+          reason: "No explicit/contact/organization/user-owned project match.",
+          direction,
+          processedAt: new Date().toISOString()
+        } satisfies Prisma.InputJsonValue,
+        activityDate: persistedMessage.sentAt
+      }
+    });
+    context.stats.createdActivities += 1;
     return;
   }
 
@@ -1623,6 +1654,7 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
       createdOrganizations: 0,
       createdContacts: 0,
       createdActivities: 0,
+      unassignedEmails: 0,
       createdEntities: {
         contacts: [],
         organizations: [],
@@ -1674,7 +1706,8 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
       generatedTasks: 0,
       createdOrganizations: 0,
       createdContacts: 0,
-      createdActivities: 0
+      createdActivities: 0,
+      unassignedEmails: 0
     };
     const createdEntities = {
       contacts: [] as Array<{ id: string; name: string; email: string; organizationName: string | null }>,
@@ -1806,11 +1839,20 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
       createdOrganizations: stats.createdOrganizations,
       createdContacts: stats.createdContacts,
       createdActivities: stats.createdActivities,
+      unassignedEmails: stats.unassignedEmails,
       createdEntities,
       themes: [...themes],
       risks: [...risks],
       nextSteps: [...nextSteps]
     };
+
+    if (stats.unassignedEmails > 0) {
+      console.warn("[email-enrichment] Unassigned emails imported", {
+        jobId: job.id,
+        userId: input.userId,
+        unassignedEmails: stats.unassignedEmails
+      });
+    }
 
     await prisma.$transaction([
       prisma.emailSyncJob.update({
@@ -1898,7 +1940,8 @@ export async function runMockEmailEnrichmentTest(input: {
       generatedTasks: 0,
       createdOrganizations: 0,
       createdContacts: 0,
-      createdActivities: 0
+      createdActivities: 0,
+      unassignedEmails: 0
     };
     const createdEntities = {
       contacts: [] as Array<{ id: string; name: string; email: string; organizationName: string | null }>,

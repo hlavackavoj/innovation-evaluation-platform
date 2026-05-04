@@ -70,11 +70,11 @@ export function resolveBootstrapAdminRole(email: string, currentRole: UserRole):
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 
-  // Emergency local override: keep this aligned with your own admin email if env is not available.
-  const hardcodedEmergencyAdmins = ["hlavackavoj@gmail.com", "prenosil@gmail.com"];
-  const allEmergencyAdmins = [...new Set([...adminEmails, ...hardcodedEmergencyAdmins])];
+  if (adminEmails.length === 0) {
+    console.warn("[auth][resolveBootstrapAdminRole] No bootstrap admin env vars configured; env-based admin escalation is disabled.");
+  }
 
-  if (allEmergencyAdmins.includes(email.toLowerCase())) {
+  if (adminEmails.includes(email.toLowerCase())) {
     return "ADMIN";
   }
 
