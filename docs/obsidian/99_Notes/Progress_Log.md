@@ -198,3 +198,11 @@ Omezení "Default Viewer" bylo pro hlavního správce (`hlavackavoj@gmail.com`) 
   - Tím pádem nebyl nalezen ani problémový pattern s `JSON.stringify()` uvnitř raw SQL parametrů.
 - Build verifikace: `npm run build` proběhl úspěšně.
 - Závěr: změna schématu nebyla nutná; fix je v aplikační logice (odolnost auth vrstvy + role sync).
+
+## 2026-05-03 — Email Analyzer Bulk Throughput Hardening (15+ messages)
+
+- `lib/email/analyzer-pipeline.ts` je nyní optimalizován pro **Bulk Analysis (15+ messages)** pomocí sekvenčního throttlingu.
+- Zpracování e-mailů běží sekvenčně s progress logem: `[AI Analysis] Processing email X of Y...`.
+- Mezi e-maily je zavedený delay `4000 ms` a také globální throttling mezi voláními Gemini `generateContent`.
+- Přidán advanced retry handler pro Gemini (max 3 pokusy): při `429` čte `retryDelay` z odpovědi, jinak čeká fallback `10s`.
+- Při finálním selhání AI analýzy se e-mail persistuje do DB s `analysisMetadata.analysisStatus = "PENDING"` a pipeline pokračuje na další e-mail.
