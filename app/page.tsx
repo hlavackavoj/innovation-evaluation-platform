@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
-import { AlertTriangle, FolderKanban, ClipboardList, ArrowRight, Activity, Target, type LucideIcon } from "lucide-react";
+import { AlertTriangle, FolderKanban, ClipboardList, ArrowRight, Activity, Target, BookOpen, Zap, type LucideIcon } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Shell } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
@@ -9,6 +9,7 @@ import { getDashboardData } from "@/lib/data";
 import { formatDate, formatEnumLabel } from "@/lib/format";
 import { parseAnalysisMetadata } from "@/lib/email/analysis-metadata";
 import { assignActivityToProjectAction } from "@/app/email-analyzer/actions";
+import { parseVault } from "@/lib/obsidian/parser";
 
 const statIcons: Record<string, LucideIcon> = {
   "Výzkumné projekty": FolderKanban,
@@ -33,6 +34,7 @@ export default async function DashboardPage({
   }
 
   const { stats, projectsByStage, recentActivities, assignableProjects, urgentTasks } = await getDashboardData();
+  const vault = parseVault();
 
   const showPendingApproval = searchParams?.pending_approval === "1";
 
@@ -203,7 +205,7 @@ export default async function DashboardPage({
                         return (
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
-                              Sentiment {metadata.sentimentScore ?? "N/A"}/10
+                              Sentiment {metadata.sentimentScore === null ? "Nezjištěno" : `${metadata.sentimentScore}/10`}
                             </span>
                             <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
                               Urgent {metadata.isUrgent ? "yes" : "no"}
@@ -259,6 +261,87 @@ export default async function DashboardPage({
               <p className="mt-1 text-xs text-zinc-400">Aktivita se zobrazí po přiřazení komunikace k projektům.</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Vault Insights — Znalostní báze */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4 bg-gradient-to-r from-zinc-900 to-zinc-950">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-900/50 border border-indigo-800/40">
+              <BookOpen size={13} className="text-indigo-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-zinc-100">Znalostní báze</p>
+              <p className="text-[11px] font-mono text-zinc-600">docs/obsidian/ · {vault.stats.totalNotes} poznámek · {vault.stats.totalLinks} odkazů</p>
+            </div>
+          </div>
+          <Link
+            href="/knowledge"
+            className="flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            Celá mapa <ArrowRight size={12} />
+          </Link>
+        </div>
+
+        <div className="grid divide-y divide-zinc-800/60 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+          {/* Immediate actions */}
+          <div className="px-5 py-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <Zap size={11} className="text-indigo-400" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Immediate next steps</span>
+            </div>
+            {vault.immediateActions.length > 0 ? (
+              <ol className="space-y-1.5">
+                {vault.immediateActions.slice(0, 3).map((action, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded bg-zinc-800 text-[9px] font-bold text-zinc-500">
+                      {i + 1}
+                    </span>
+                    <span className="text-xs text-zinc-300 leading-snug">{action}</span>
+                  </li>
+                ))}
+                {vault.immediateActions.length > 3 && (
+                  <li className="text-[11px] text-zinc-600 pl-6">
+                    + {vault.immediateActions.length - 3} dalších
+                  </li>
+                )}
+              </ol>
+            ) : (
+              <p className="text-xs text-zinc-600">Žádné immediate akce nalezeny.</p>
+            )}
+          </div>
+
+          {/* Open questions + tech debt counts */}
+          <div className="px-5 py-4">
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Stav dokumentace</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Open questions</span>
+                <span className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 font-mono text-xs text-rose-400">
+                  {vault.stats.totalOpenQuestions}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Technical debt</span>
+                <span className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 font-mono text-xs text-amber-400">
+                  {vault.stats.totalTechDebt}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Next step sekce</span>
+                <span className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 font-mono text-xs text-emerald-400">
+                  {vault.nextSteps.length}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Calendar candidates</span>
+                <span className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 font-mono text-xs text-indigo-400">
+                  {vault.stats.totalNotes > 0 ? vault.calendarCandidates.length : 0}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </Shell>

@@ -1,0 +1,14 @@
+{
+  "Stop": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "prompt",
+          "prompt": "Before approving stop: check if any TypeScript or React files were modified. If yes, verify that: (1) no obvious TypeScript type errors are introduced (no `any` without reason, no missing required props), (2) no backtick characters are used inside JSX text that would render as literal backticks instead of template literals, (3) no console.log statements logging sensitive data like API keys or tokens, (4) no raw SQL $queryRawUnsafe usage was added. If all checks pass, return 'approve'. If any issue found, return 'block' with a specific reason.",
+          "timeout": 20
+        }
+      ]
+    }
+  ]
+}

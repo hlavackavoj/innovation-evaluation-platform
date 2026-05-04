@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Users, Building2, CheckSquare, FileStack, Mail, LogOut } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, Building2, CheckSquare, FileStack, Mail, LogOut, BookOpen } from "lucide-react";
 import { LogoutLink } from "@kinde-oss/kinde-auth-nextjs/components";
 import type { UserRole } from "@prisma/client";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,8 @@ const links = [
   { href: "/organizations", label: "Organizations", icon: Building2, exact: false },
   { href: "/tasks", label: "Tasks", icon: CheckSquare, exact: false },
   { href: "/email-analyzer", label: "Email Analyzer", icon: Mail, exact: false },
-  { href: "/templates", label: "Templates", icon: FileStack, exact: false }
+  { href: "/templates", label: "Templates", icon: FileStack, exact: false },
+  { href: "/knowledge", label: "Znalosti", icon: BookOpen, exact: false },
 ];
 
 export function Navigation({ userName, userRole }: { userName: string; userRole: UserRole }) {
