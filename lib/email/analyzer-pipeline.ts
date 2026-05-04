@@ -19,6 +19,7 @@ import { dedupeProviderMessages } from "@/lib/email/idempotency";
 import type { NormalizedEmailMessage } from "@/lib/email/types";
 import type { UniversityPhaseSuggestion } from "@/lib/constants";
 import type { CalendarProposal } from "@/lib/email/analysis-metadata";
+import { getGeminiApiKey } from "@/lib/env";
 
 type AnalyzerOutput = {
   summary: string;
@@ -78,6 +79,10 @@ const INTENT_CATEGORIES = new Set<AnalyzerOutput["intentCategory"]>([
   "FEEDBACK",
   "ADMIN"
 ]);
+const GEMINI_THROTTLE_MS = 4000;
+const GEMINI_MAX_RETRIES = 3;
+const GEMINI_RETRY_FALLBACK_MS = 10_000;
+let lastGeminiCallAt = 0;
 
 const WEEKDAY_ALIASES = new Map<string, number>([
   ["monday", 1],
@@ -105,6 +110,77 @@ const WEEKDAY_ALIASES = new Map<string, number>([
   ["sun", 0],
   ["nedele", 0]
 ]);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(error: unknown): boolean {
+  const candidate = error as { status?: number; response?: { status?: number }; message?: string } | undefined;
+  if (candidate?.status === 429) return true;
+  if (candidate?.response?.status === 429) return true;
+  if (typeof candidate?.message === "string" && candidate.message.includes("429")) return true;
+  return false;
+}
+
+function parseRetryDelayMs(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value >= 1000 ? value : value * 1000;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    const seconds = trimmed.match(/^(\d+(?:\.\d+)?)s$/);
+    if (seconds) {
+      return Math.max(1, Math.ceil(Number(seconds[1]) * 1000));
+    }
+    const millis = trimmed.match(/^(\d+)ms$/);
+    if (millis) {
+      return Math.max(1, Number(millis[1]));
+    }
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric >= 1000 ? numeric : numeric * 1000;
+    }
+  }
+  return null;
+}
+
+function extractRetryDelayMs(error: unknown): number | null {
+  const candidate = error as
+    | {
+        retryDelay?: unknown;
+        response?: { data?: { error?: { details?: Array<{ retryDelay?: unknown }> } } };
+      }
+    | undefined;
+  const direct = parseRetryDelayMs(candidate?.retryDelay);
+  if (direct) return direct;
+  const detail = candidate?.response?.data?.error?.details?.find((item) => item?.retryDelay != null)?.retryDelay;
+  return parseRetryDelayMs(detail);
+}
+
+async function generateContentWithRetry(
+  model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
+  payload: Parameters<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>[0]
+) {
+  for (let attempt = 1; attempt <= GEMINI_MAX_RETRIES; attempt += 1) {
+    const waitBeforeCall = Math.max(0, GEMINI_THROTTLE_MS - (Date.now() - lastGeminiCallAt));
+    if (waitBeforeCall > 0) {
+      await sleep(waitBeforeCall);
+    }
+
+    try {
+      lastGeminiCallAt = Date.now();
+      return await model.generateContent(payload);
+    } catch (error) {
+      if (!isRateLimitError(error) || attempt >= GEMINI_MAX_RETRIES) {
+        throw error;
+      }
+      const retryDelayMs = extractRetryDelayMs(error) ?? GEMINI_RETRY_FALLBACK_MS;
+      await sleep(retryDelayMs);
+    }
+  }
+  throw new Error("Gemini retry handler reached an unexpected state.");
+}
 
 function extractDomain(email?: string | null): string | null {
   if (!email) return null;
@@ -919,11 +995,11 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
 }
 
 async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerOutput> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getGeminiApiKey();
 
   if (!apiKey) {
     return {
-      summary: "Analyzer skipped: GOOGLE_AI_API_KEY is missing.",
+      summary: "Analyzer skipped: missing Gemini API key (GOOGLE_API_KEY or GEMINI_API_KEY).",
       intentCategory: "ADMIN",
       themes: [],
       risks: [],
@@ -940,7 +1016,7 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
   }
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
   const analysisDate = toIsoDate(new Date());
   const systemPrompt = [
     "You are an email CRM analyzer for a university innovation platform. Return strict JSON only.",
@@ -983,7 +1059,7 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
   ].join("\n\n");
   const prompt = [systemPrompt, userPrompt].join("\n\n");
 
-  const response = await model.generateContent({
+  const response = await generateContentWithRetry(model, {
     generationConfig: {
       responseMimeType: "application/json"
     },
@@ -1004,11 +1080,11 @@ async function analyzeTaskSuggestionsWithGemini(params: {
   senderEmail: string | null;
   knownProjects: Array<{ id: string; title: string }>;
 }): Promise<GeminiTaskSuggestionOutput> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getGeminiApiKey();
   if (!apiKey) return { projects: [], tasks: [] };
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
   const prompt = [
     "Return strict JSON only.",
     "Extract project and task proposals from CRM communication.",
@@ -1024,7 +1100,7 @@ async function analyzeTaskSuggestionsWithGemini(params: {
     `Body: ${params.bodyText.slice(0, 5000)}`
   ].join("\n");
 
-  const response = await model.generateContent({
+  const response = await generateContentWithRetry(model, {
     generationConfig: { responseMimeType: "application/json" },
     contents: [{ role: "user", parts: [{ text: prompt }] }]
   });
@@ -1295,7 +1371,48 @@ async function processEmailMessageForEnrichment(
   }
 
   const joinedText = [message.subject || "", message.snippet || "", message.bodyText || ""].join("\n").trim();
-  const data = await analyzeText(message.subject || "(no subject)", joinedText);
+  let data: AnalyzerOutput;
+  try {
+    data = await analyzeText(message.subject || "(no subject)", joinedText);
+  } catch (error) {
+    await prisma.activity.upsert({
+      where: {
+        emailMessageId: persistedMessage.providerMessageId
+      },
+      create: {
+        projectId: projectIdForActivity,
+        userId: context.userId,
+        type: ActivityType.EMAIL,
+        note: "AI analysis pending: rate limited or temporary model failure.",
+        bodyContent: message.bodyText ?? null,
+        emailMessageId: persistedMessage.providerMessageId,
+        emailParentId: persistedMessage.providerParentMessageId,
+        aiAnalysis: Prisma.JsonNull,
+        analysisMetadata: {
+          analysisStatus: "PENDING",
+          analysisError: error instanceof Error ? error.message : String(error),
+          direction,
+          processedAt: new Date().toISOString()
+        } satisfies Prisma.InputJsonValue,
+        activityDate: persistedMessage.sentAt
+      },
+      update: {
+        note: "AI analysis pending: rate limited or temporary model failure.",
+        bodyContent: message.bodyText ?? null,
+        emailParentId: persistedMessage.providerParentMessageId,
+        aiAnalysis: Prisma.JsonNull,
+        analysisMetadata: {
+          analysisStatus: "PENDING",
+          analysisError: error instanceof Error ? error.message : String(error),
+          direction,
+          processedAt: new Date().toISOString()
+        } satisfies Prisma.InputJsonValue,
+        activityDate: persistedMessage.sentAt
+      }
+    });
+    context.stats.createdActivities += 1;
+    return;
+  }
   for (const theme of data.themes) context.themes.add(theme);
   for (const risk of data.risks) context.risks.add(risk);
   for (const step of data.nextSteps) context.nextSteps.add(step.title);
@@ -1632,7 +1749,7 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
         await fetchProviderMessages(connection.provider, accessToken, filter)
       );
 
-      for (const message of messages) {
+      const scopedMessages = messages.filter((message) => {
         const fromParticipant = message.participants.from[0]?.email?.toLowerCase();
         const userEmail = connection.emailAddress?.toLowerCase();
         const direction: EmailDirection =
@@ -1642,9 +1759,13 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
               : "inbound"
             : "unknown";
 
-        if (input.direction && input.direction !== "all" && direction !== input.direction) {
-          continue;
-        }
+        if (input.direction && input.direction !== "all" && direction !== input.direction) return false;
+        return true;
+      });
+
+      for (let index = 0; index < scopedMessages.length; index += 1) {
+        const message = scopedMessages[index];
+        console.log(`[AI Analysis] Processing email ${index + 1} of ${scopedMessages.length}...`);
         await processEmailMessageForEnrichment(
           {
             jobId: job.id,
@@ -1665,6 +1786,10 @@ export async function runCommunicationAnalysis(input: AnalyzeCommunicationInput)
           message,
           project
         );
+
+        if (index < scopedMessages.length - 1) {
+          await sleep(GEMINI_THROTTLE_MS);
+        }
       }
 
       await prisma.emailAccountConnection.update({

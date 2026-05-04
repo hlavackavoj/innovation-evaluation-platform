@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getGeminiApiKey } from "./env";
 
 export type PatentEmailTask = {
   title: string;
@@ -102,10 +103,10 @@ function parseAnalysis(value: unknown): PatentEmailAnalysis {
 }
 
 export async function analyzePatentEmail(content: string, subject: string): Promise<PatentEmailAnalysis> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getGeminiApiKey();
 
   if (!apiKey) {
-    throw new Error("GOOGLE_AI_API_KEY is missing.");
+    throw new Error("Missing Gemini API key. Set GOOGLE_API_KEY or GEMINI_API_KEY.");
   }
 
   const client = new GoogleGenerativeAI(apiKey);

@@ -37,3 +37,15 @@ export function formatErrorForDisplay(error: unknown): string {
   }
   return "Unexpected server error.";
 }
+
+export function getGeminiApiKey(): string | null {
+  const candidates = [process.env.GOOGLE_API_KEY, process.env.GEMINI_API_KEY, process.env.GOOGLE_AI_API_KEY];
+
+  for (const key of candidates) {
+    if (key && key.trim().length > 0) {
+      return key.trim();
+    }
+  }
+
+  return null;
+}

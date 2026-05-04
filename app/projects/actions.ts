@@ -10,6 +10,7 @@ import {
   requireCanModifyCrmRecords,
   requireProjectAccess
 } from "@/lib/authorization";
+import { getGeminiApiKey } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { parseProjectFormData } from "@/lib/project-form";
 import { uploadProjectDocumentFile, uploadTemplateFile } from "@/lib/supabase-storage";
@@ -362,14 +363,14 @@ export async function processCommunicationAction(projectId: string, formData: Fo
     throw new Error("Communication content is required.");
   }
 
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  const apiKey = getGeminiApiKey();
 
   if (!apiKey) {
-    throw new Error("GOOGLE_AI_API_KEY is missing.");
+    throw new Error("Missing Gemini API key. Set GOOGLE_API_KEY or GEMINI_API_KEY.");
   }
 
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+  const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
   const sanitizedContent = content
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[REDACTED_EMAIL]")
     .replace(/\+?\d[\d\s\-()]{7,}\d/g, "[REDACTED_PHONE]")
