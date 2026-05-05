@@ -75,6 +75,7 @@ export default async function EmailAnalyzerPage({
         select: {
           id: true,
           note: true,
+          bodyContent: true,
           activityDate: true,
           projectId: true,
           project: {
@@ -100,6 +101,7 @@ export default async function EmailAnalyzerPage({
         select: {
           id: true,
           note: true,
+          bodyContent: true,
           activityDate: true,
           projectId: true,
           project: {
@@ -147,6 +149,7 @@ export default async function EmailAnalyzerPage({
         activityId: item.id,
         activityDate: item.activityDate.toISOString(),
         summary: item.note,
+        sourceText: item.bodyContent ?? item.note,
         projectId: item.projectId,
         projectTitle: item.project?.title ?? null,
         intentCategory: metadata.intentCategory,

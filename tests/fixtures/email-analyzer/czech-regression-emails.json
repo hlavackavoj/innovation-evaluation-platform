@@ -1,0 +1,32 @@
+[
+  {
+    "id": "design-feedback",
+    "emailTimestampIso": "2026-05-04T09:00:00.000Z",
+    "text": "Ahoj, ty poslední grafické návrhy vypadají skvěle, díky za ně. Mám k nim jen pár drobných poznámek, pošlu je v PDF během odpoledne. Zároveň by mě zajímalo, kdy začneme s tou fází kódování?"
+  },
+  {
+    "id": "invoice-payment",
+    "emailTimestampIso": "2026-05-04T09:00:00.000Z",
+    "text": "Dobrý den, v příloze zasílám fakturu za odpracované hodiny na projektu v měsíci dubnu. Prosím o proplacení do konce týdne. Variabilní symbol zůstává stejný."
+  },
+  {
+    "id": "critical-login-incident",
+    "emailTimestampIso": "2026-05-04T09:00:00.000Z",
+    "text": "prosím vás, okamžitě se na to podívejte. Od rána nám volají lidi, že se nemůžou přihlásit do systému. Je to kritické, ztrácíme peníze každou hodinu. Pošlete mi info, hned jak na to přijdete."
+  },
+  {
+    "id": "new-sales-lead",
+    "emailTimestampIso": "2026-05-04T09:00:00.000Z",
+    "text": "Dobrý den, viděli jsme vaši práci pro firmu Abc a moc se nám líbí. Chtěli bychom kompletně předělat náš web, aby byl modernější. Můžete se na to podívat a říct nám, co si o tom myslíte?"
+  },
+  {
+    "id": "friday-meeting-needs-time",
+    "emailTimestampIso": "2026-05-04T09:00:00.000Z",
+    "text": "dále bych chtěl vědet jaké by jsi zvoiil navazující kroky aa chtěl bych se s tebou sejít ohledně těch kroku v pátek nachrni možný čas ty."
+  },
+  {
+    "id": "stripe-next-wednesday",
+    "emailTimestampIso": "2026-05-04T09:00:00.000Z",
+    "text": "Ahoj, potřebovali bychom probrat to napojení na Stripe, o kterém jsme mluvili. Máš čas příští středu dopoledne, řekněme v 10:00? Dej mi prosím vědět, jestli ti to sedí, nebo navrhni jiný termín."
+  }
+]

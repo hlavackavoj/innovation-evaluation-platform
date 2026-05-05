@@ -97,6 +97,7 @@ const WEEKDAY_ALIASES = new Map<string, number>([
   ["wednesday", 3],
   ["wed", 3],
   ["streda", 3],
+  ["stredu", 3],
   ["thursday", 4],
   ["thu", 4],
   ["thur", 4],
@@ -559,6 +560,9 @@ function normalizeDeadlineToIso(value: unknown, referenceDate: Date): string | n
     result.setDate(result.getDate() + 2);
     return toIsoDate(result);
   }
+  if (/(do konce tydne|do konce tydna|by end of week|end of week)/.test(normalized)) {
+    return endOfWeekIso(referenceDate);
+  }
 
   const weekdayDate = resolveWeekdayDate(trimmed, referenceDate);
   if (weekdayDate) return weekdayDate;
@@ -696,7 +700,7 @@ function normalizeDateTimeToIso(value: unknown, referenceDate: Date): string | n
 
   const asDateOnly = normalizeDeadlineToIso(trimmed, referenceDate);
   if (!asDateOnly) return null;
-  return `${asDateOnly}T09:00:00.000Z`;
+  return `${asDateOnly}T09:00:00+02:00`;
 }
 
 function buildCalendarProposals(
@@ -718,10 +722,83 @@ function buildCalendarProposals(
         title: action.title,
         proposedDateTimeIso,
         allDayDateIso,
-        timezone: "UTC"
+        timezone: "Europe/Prague"
       } satisfies CalendarProposal;
     })
     .filter((item): item is CalendarProposal => !!item);
+}
+
+function endOfWeekIso(referenceDate: Date): string {
+  const target = startOfDay(referenceDate);
+  const weekday = target.getDay();
+  const friday = 5;
+  let delta = (friday - weekday + 7) % 7;
+  if (delta === 0) delta = 4; // "do konce týdne" from Friday means end of current work-week, not today
+  target.setDate(target.getDate() + delta);
+  return toIsoDate(target);
+}
+
+function inferUrgencyAndPriorityFromText(text: string): { isUrgent: boolean; priority: ProjectPriority } {
+  const normalized = normalizeText(text);
+  const criticalSignals = [
+    "okamzite",
+    "kriticke",
+    "kriticka",
+    "nemuzou se prihlasit",
+    "nemohou se prihlasit",
+    "ztracime penize",
+    "hned jak na to prijdete",
+    "critical",
+    "cannot login",
+    "can't login",
+    "losing money"
+  ];
+  const highSignals = ["urgent", "co nejdrive", "asap", "do konce tydne", "by end of week"];
+
+  if (criticalSignals.some((signal) => normalized.includes(signal))) {
+    return { isUrgent: true, priority: ProjectPriority.URGENT };
+  }
+  if (highSignals.some((signal) => normalized.includes(signal))) {
+    return { isUrgent: true, priority: ProjectPriority.HIGH };
+  }
+  return { isUrgent: false, priority: ProjectPriority.MEDIUM };
+}
+
+function inferStageFromText(text: string): PipelineStage | null {
+  const normalized = normalizeText(text);
+  if (/(incident|kritick|support|nemuzou se prihlasit|login issue|outage)/.test(normalized)) return PipelineStage.SCALING;
+  if (/(design|grafick|reviz|feedback|pripomink)/.test(normalized)) return PipelineStage.VALIDATION;
+  if (/(kodovani|coding|implementac|stripe|integrac)/.test(normalized)) return PipelineStage.MVP;
+  if (/(lead|novy web|redesign|co si o tom myslite|discovery|sales|nabidka)/.test(normalized)) return PipelineStage.DISCOVERY;
+  return null;
+}
+
+function inferMeetingProposalFromText(
+  text: string,
+  referenceDate: Date
+): { proposedDateTime: string | null; allDayDate: string | null; needsScheduling: boolean } | null {
+  const normalized = normalizeText(text);
+  const meetingSignal =
+    /(mas cas|mate cas|chtel bych se sejit|muzeme se sejit|call|meeting|schuzk|probrat|navrhni mozny cas)/.test(normalized);
+  if (!meetingSignal) return null;
+
+  const timeMatch = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  const hour = timeMatch ? Number(timeMatch[1]) : null;
+  const minute = timeMatch ? Number(timeMatch[2]) : null;
+  const dateIso = normalizeDeadlineToIso(text, referenceDate);
+  if (dateIso && hour !== null && minute !== null) {
+    const hh = String(hour).padStart(2, "0");
+    const mm = String(minute).padStart(2, "0");
+    return {
+      proposedDateTime: `${dateIso}T${hh}:${mm}:00+02:00`,
+      allDayDate: null,
+      needsScheduling: false
+    };
+  }
+  if (dateIso) {
+    return { proposedDateTime: null, allDayDate: dateIso, needsScheduling: true };
+  }
+  return { proposedDateTime: null, allDayDate: null, needsScheduling: true };
 }
 
 function sanitizeJson(text: string) {
@@ -769,7 +846,7 @@ function normalizeProjectName(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-export function parseGeminiTaskSuggestionOutput(raw: string): GeminiTaskSuggestionOutput {
+export function parseGeminiTaskSuggestionOutput(raw: string, referenceDate: Date = new Date()): GeminiTaskSuggestionOutput {
   let parsed: unknown;
   try {
     parsed = JSON.parse(sanitizeJson(raw)) as unknown;
@@ -817,7 +894,7 @@ export function parseGeminiTaskSuggestionOutput(raw: string): GeminiTaskSuggesti
         title,
         description: typeof row.description === "string" ? row.description.trim() || null : null,
         priority: parsePriority(row.priority),
-        deadlineIso: normalizeDeadlineToIso(row.deadline, new Date()),
+        deadlineIso: normalizeDeadlineToIso(row.deadline, referenceDate),
         contactEmail: typeof row.contactEmail === "string" ? row.contactEmail.trim().toLowerCase() || null : null,
         projectName: typeof row.projectName === "string" ? row.projectName.trim() || null : null,
         projectRef: typeof row.projectRef === "string" ? row.projectRef.trim() || null : null,
@@ -830,8 +907,7 @@ export function parseGeminiTaskSuggestionOutput(raw: string): GeminiTaskSuggesti
   return { projects, tasks };
 }
 
-export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
-  const referenceDate = new Date();
+export function parseAnalyzerOutput(raw: string, referenceDate: Date = new Date()): AnalyzerOutput {
 
   try {
     const parsed = JSON.parse(sanitizeJson(raw)) as unknown;
@@ -863,11 +939,9 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
       : [];
 
     const sentimentScore = parseSentimentScore(value.sentimentScore);
-    const isUrgent = typeof value.isUrgent === "boolean" ? value.isUrgent : false;
-    const suggestedProjectStage = parseSuggestedProjectStage(value.suggestedProjectStage);
     const suggestedUniversityPhase = parseSuggestedUniversityPhase(value.suggestedUniversityPhase);
     const meetingDatetimes = parseMeetingDatetimes(value.meetingDatetimes);
-    const suggestedActions = Array.isArray(value.suggestedActions)
+    let suggestedActions = Array.isArray(value.suggestedActions)
       ? value.suggestedActions
           .filter((action): action is Record<string, unknown> => !!action && typeof action === "object")
           .map((action) => {
@@ -915,6 +989,10 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
     const mergedQuestions = [...questionsFromGap, ...questionsFromFollowUp].filter(
       (question, index, list) => list.indexOf(question) === index
     );
+    const mergedText = [summary, ...themes, ...risks, ...mergedQuestions].join(" ");
+    const urgencyInference = inferUrgencyAndPriorityFromText(mergedText);
+    const isUrgent = typeof value.isUrgent === "boolean" ? value.isUrgent : urgencyInference.isUrgent;
+    const suggestedProjectStage = parseSuggestedProjectStage(value.suggestedProjectStage) ?? inferStageFromText(mergedText);
 
     const intentCategory =
       parseIntentCategory(value.intentCategory) ??
@@ -950,6 +1028,35 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
           return { title: item.task, dueDays };
         })
         .filter((item): item is { title: string; dueDays: number } => !!item);
+    }
+
+    const meetingInference = inferMeetingProposalFromText(mergedText, referenceDate);
+    if (meetingInference && !suggestedActions.some((action) => action.type === "SCHEDULE_MEETING")) {
+      suggestedActions = [
+        ...suggestedActions,
+        {
+          type: "SCHEDULE_MEETING",
+          title: "Navrhnout termín schůzky",
+          description: meetingInference.needsScheduling
+            ? "Detekován záměr schůzky, ale chybí přesný čas. Označeno jako needs scheduling."
+            : "Detekován konkrétní návrh termínu schůzky.",
+          proposedDateTime: meetingInference.proposedDateTime,
+          deadline: meetingInference.allDayDate,
+          dueDays: meetingInference.allDayDate
+            ? parseDueDaysFromIsoDate(meetingInference.allDayDate, referenceDate)
+            : null
+        }
+      ];
+    }
+
+    if (actionItems.length === 0 && suggestedActions.length > 0) {
+      actionItems.push(
+        ...suggestedActions.map((action) => ({
+          task: action.title,
+          deadline: action.deadline,
+          assigneeSuggestion: null
+        }))
+      );
     }
 
     if (!summary) {
@@ -994,7 +1101,7 @@ export function parseAnalyzerOutput(raw: string): AnalyzerOutput {
   }
 }
 
-async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerOutput> {
+async function analyzeText(subject: string, bodyText: string, referenceDate: Date): Promise<AnalyzerOutput> {
   const apiKey = getGeminiApiKey();
 
   if (!apiKey) {
@@ -1017,7 +1124,7 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
 
   const client = new GoogleGenerativeAI(apiKey);
   const model = client.getGenerativeModel({ model: GEMINI_EMAIL_ANALYZER_MODEL });
-  const analysisDate = toIsoDate(new Date());
+  const analysisDate = toIsoDate(referenceDate);
   const systemPrompt = [
     "You are an email CRM analyzer for a university innovation platform. Return strict JSON only.",
     "Classify each email into exactly one intentCategory: MEETING, PROPOSAL, FEEDBACK, ADMIN.",
@@ -1071,7 +1178,7 @@ async function analyzeText(subject: string, bodyText: string): Promise<AnalyzerO
     ]
   });
 
-  return parseAnalyzerOutput(response.response.text());
+  return parseAnalyzerOutput(response.response.text(), referenceDate);
 }
 
 async function analyzeTaskSuggestionsWithGemini(params: {
@@ -1079,6 +1186,7 @@ async function analyzeTaskSuggestionsWithGemini(params: {
   bodyText: string;
   senderEmail: string | null;
   knownProjects: Array<{ id: string; title: string }>;
+  referenceDate: Date;
 }): Promise<GeminiTaskSuggestionOutput> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) return { projects: [], tasks: [] };
@@ -1094,6 +1202,7 @@ async function analyzeTaskSuggestionsWithGemini(params: {
     "- Detect one or multiple projects if present.",
     "- If unsure about existing project match, keep confidence low and set explicit reason.",
     "- deadline must be parseable date phrase or null.",
+    `analysis_date: ${toIsoDate(params.referenceDate)}`,
     `Known projects: ${params.knownProjects.map((p) => `${p.id}:${p.title}`).join(" | ")}`,
     `Sender email: ${params.senderEmail ?? "unknown"}`,
     `Subject: ${params.subject}`,
@@ -1105,7 +1214,7 @@ async function analyzeTaskSuggestionsWithGemini(params: {
     contents: [{ role: "user", parts: [{ text: prompt }] }]
   });
 
-  return parseGeminiTaskSuggestionOutput(response.response.text());
+  return parseGeminiTaskSuggestionOutput(response.response.text(), params.referenceDate);
 }
 
 export function matchSuggestedProjectToExisting(
@@ -1124,6 +1233,9 @@ function applyUniversityTaskPriority(
   suggestion: Pick<SuggestedTaskCandidate, "title" | "description" | "reason" | "priority">
 ): ProjectPriority {
   const signalText = normalizeText([suggestion.title, suggestion.description ?? "", suggestion.reason].join(" "));
+  if (/(okamzite|kritick|nemuzou se prihlasit|nemohou se prihlasit|ztracime penize|production incident|outage|login issue)/.test(signalText)) {
+    return ProjectPriority.URGENT;
+  }
   if (/(grant deadline|deadline for grant|uzaverka grantu|grantova uzaverka)/.test(signalText)) {
     return ProjectPriority.URGENT;
   }
@@ -1366,6 +1478,7 @@ async function processEmailMessageForEnrichment(
     senderProjectIds,
     senderOrganizationId
   );
+  const processingReferenceIso = (persistedMessage.sentAt ?? new Date()).toISOString();
 
   if (!projectIdForActivity) {
     context.stats.unassignedEmails += 1;
@@ -1386,7 +1499,7 @@ async function processEmailMessageForEnrichment(
           analysisStatus: "UNASSIGNED_PROJECT",
           reason: "No explicit/contact/organization/user-owned project match.",
           direction,
-          processedAt: new Date().toISOString()
+          processedAt: processingReferenceIso
         } satisfies Prisma.InputJsonValue,
         activityDate: persistedMessage.sentAt
       },
@@ -1401,7 +1514,7 @@ async function processEmailMessageForEnrichment(
           analysisStatus: "UNASSIGNED_PROJECT",
           reason: "No explicit/contact/organization/user-owned project match.",
           direction,
-          processedAt: new Date().toISOString()
+          processedAt: processingReferenceIso
         } satisfies Prisma.InputJsonValue,
         activityDate: persistedMessage.sentAt
       }
@@ -1411,9 +1524,10 @@ async function processEmailMessageForEnrichment(
   }
 
   const joinedText = [message.subject || "", message.snippet || "", message.bodyText || ""].join("\n").trim();
+  const messageReferenceDate = persistedMessage.sentAt ?? new Date(processingReferenceIso);
   let data: AnalyzerOutput;
   try {
-    data = await analyzeText(message.subject || "(no subject)", joinedText);
+    data = await analyzeText(message.subject || "(no subject)", joinedText, messageReferenceDate);
   } catch (error) {
     await prisma.activity.upsert({
       where: {
@@ -1432,7 +1546,7 @@ async function processEmailMessageForEnrichment(
           analysisStatus: "PENDING",
           analysisError: error instanceof Error ? error.message : String(error),
           direction,
-          processedAt: new Date().toISOString()
+          processedAt: processingReferenceIso
         } satisfies Prisma.InputJsonValue,
         activityDate: persistedMessage.sentAt
       },
@@ -1445,7 +1559,7 @@ async function processEmailMessageForEnrichment(
           analysisStatus: "PENDING",
           analysisError: error instanceof Error ? error.message : String(error),
           direction,
-          processedAt: new Date().toISOString()
+          processedAt: processingReferenceIso
         } satisfies Prisma.InputJsonValue,
         activityDate: persistedMessage.sentAt
       }
@@ -1470,10 +1584,10 @@ async function processEmailMessageForEnrichment(
     intentCategory: data.intentCategory,
     actionItems: data.actionItems,
     suggestedActions: data.suggestedActions,
-    calendarProposals: buildCalendarProposals(data.suggestedActions, new Date()),
+    calendarProposals: buildCalendarProposals(data.suggestedActions, messageReferenceDate),
     gapAnalysisQuestions: data.followUpQuestions,
     followUpQuestions: data.followUpQuestions,
-    processedAt: new Date().toISOString()
+    processedAt: processingReferenceIso
   };
   const generatedTaskCandidates =
     data.nextSteps.length > 0 ? data.nextSteps.length : data.suggestedActions.length;
@@ -1483,7 +1597,7 @@ async function processEmailMessageForEnrichment(
     description: "Generated from imported communication analysis.",
     priority: step.dueDays <= 3 ? ProjectPriority.HIGH : ProjectPriority.MEDIUM,
     deadlineIso: (() => {
-      const dueDate = new Date();
+      const dueDate = new Date(messageReferenceDate);
       dueDate.setDate(dueDate.getDate() + step.dueDays);
       return dueDate.toISOString();
     })(),
@@ -1531,7 +1645,8 @@ async function processEmailMessageForEnrichment(
       subject: message.subject || "(no subject)",
       bodyText: joinedText,
       senderEmail: sender?.email ?? null,
-      knownProjects
+      knownProjects,
+      referenceDate: messageReferenceDate
     });
 
     for (const project of geminiSuggestions.projects) {

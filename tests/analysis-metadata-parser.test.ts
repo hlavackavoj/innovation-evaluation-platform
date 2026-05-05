@@ -68,3 +68,19 @@ test("parseAnalysisMetadata returns safe defaults for legacy payloads", () => {
   assert.deepEqual(parsed?.actionItems, []);
   assert.deepEqual(parsed?.gapAnalysisQuestions, []);
 });
+
+test("parseAnalysisMetadata defaults calendar proposal timezone to Europe/Prague", () => {
+  const parsed = parseAnalysisMetadata({
+    calendarProposals: [
+      {
+        actionType: "SCHEDULE_MEETING",
+        title: "Sync",
+        proposedDateTimeIso: "2026-05-13T10:00:00+02:00",
+        allDayDateIso: null
+      }
+    ]
+  });
+
+  assert.ok(parsed);
+  assert.equal(parsed?.calendarProposals[0]?.timezone, "Europe/Prague");
+});

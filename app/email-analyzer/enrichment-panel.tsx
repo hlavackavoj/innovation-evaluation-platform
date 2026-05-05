@@ -9,7 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { acceptSuggestedTaskAction, createTaskFromAiSuggestion, deleteContact, deleteOrganizationAction, deleteTask } from "@/app/email-analyzer/actions";
 import { useRouter } from "next/navigation";
 import type { CalendarProposal, SuggestedAction } from "@/lib/email/analysis-metadata";
-import { buildGoogleCalendarUrl, buildGoogleCalendarAllDayUrl, buildIcsContent, buildIcsAllDayContent } from "@/lib/email/calendar-utils";
+import {
+  buildGoogleCalendarUrl,
+  buildGoogleCalendarAllDayUrl,
+  buildIcsContent,
+  buildIcsAllDayContent,
+  resolveSuggestedActionDueDateIso
+} from "@/lib/email/calendar-utils";
+import { buildEmailTaskPrintReport } from "@/lib/email/print-report";
 
 type SelectItem = { id: string; title: string };
 type SelectContactItem = { id: string; name: string; email: string | null };
@@ -57,6 +64,7 @@ type AiRecommendation = {
   activityId: string;
   activityDate: string;
   summary: string;
+  sourceText: string;
   projectId: string | null;
   projectTitle: string | null;
   intentCategory: "MEETING" | "PROPOSAL" | "FEEDBACK" | "ADMIN" | null;
@@ -128,30 +136,6 @@ export function EnrichmentPanel({
     if (score < 4) return "border-rose-200 bg-rose-50";
     if (score < 7) return "border-amber-200 bg-amber-50";
     return "border-emerald-200 bg-emerald-50";
-  };
-
-  const resolveDueDateIso = (action: SuggestedAction) => {
-    if (action.proposedDateTime) {
-      const proposed = new Date(action.proposedDateTime);
-      if (!Number.isNaN(proposed.getTime())) {
-        return proposed.toISOString();
-      }
-    }
-
-    if (action.deadline) {
-      const deadline = new Date(action.deadline);
-      if (!Number.isNaN(deadline.getTime())) {
-        return deadline.toISOString();
-      }
-    }
-
-    if (typeof action.dueDays === "number") {
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + action.dueDays);
-      return dueDate.toISOString();
-    }
-
-    return null;
   };
 
   const runAnalysis = (formData: FormData) => {
@@ -229,7 +213,7 @@ export function EnrichmentPanel({
           actionType: action.type,
           title: action.title,
           description: action.description,
-          dueDateIso: resolveDueDateIso(action)
+          dueDateIso: resolveSuggestedActionDueDateIso(action, recommendation.activityDate)
         });
         setRecommendationMessage(`Úkol "${action.title}" byl uložen do Tasks.`);
         router.refresh();
@@ -279,10 +263,10 @@ export function EnrichmentPanel({
     });
   };
 
-  const downloadIcs = (proposal: CalendarProposal) => {
+  const downloadIcs = (proposal: CalendarProposal, dtstampReferenceIso?: string) => {
     const ics = proposal.proposedDateTimeIso
-      ? buildIcsContent(proposal.title, proposal.proposedDateTimeIso)
-      : buildIcsAllDayContent(proposal.title, proposal.allDayDateIso!);
+      ? buildIcsContent(proposal.title, proposal.proposedDateTimeIso, 60, dtstampReferenceIso)
+      : buildIcsAllDayContent(proposal.title, proposal.allDayDateIso!, dtstampReferenceIso);
     const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -308,6 +292,39 @@ export function EnrichmentPanel({
       setCopiedQuestion(null);
     }
   };
+
+  const printRecommendations = () => {
+    const printable = buildEmailTaskPrintReport(
+      aiRecommendations.map((item) => ({
+        activityDateIso: item.activityDate,
+        sourceText: item.sourceText,
+        projectTitle: item.projectTitle,
+        analysisStatus: item.analysisStatus,
+        sentimentScore: item.sentimentScore,
+        isUrgent: item.isUrgent,
+        stage: item.suggestedProjectStage,
+        taskSummary: item.actionItems[0]?.task ?? item.suggestedActions[0]?.title ?? null,
+        dueDate: item.actionItems[0]?.deadline ?? item.suggestedActions[0]?.deadline ?? null,
+        calendarProposals: item.calendarProposals
+      }))
+    );
+    const popup = window.open("", "_blank", "width=1000,height=800");
+    if (!popup) return;
+    popup.document.write(`<html><head><meta charset="utf-8" /><title>Email report</title></head><body><pre style="white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5;">${printable.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre></body></html>`);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  };
+
+  const formatPragueDateTime = (iso: string) =>
+    new Date(iso).toLocaleString("cs-CZ", {
+      timeZone: "Europe/Prague"
+    });
+
+  const formatPragueDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("cs-CZ", {
+      timeZone: "Europe/Prague"
+    });
 
   return (
     <div className="space-y-5">
@@ -429,6 +446,11 @@ export function EnrichmentPanel({
           <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
             <h3 className="text-sm font-semibold text-zinc-900">AI doporučení z komunikace</h3>
             <p className="text-xs text-zinc-600">Doporučení z analýzy komunikace uložené v databázi.</p>
+            <div className="mt-2">
+              <Button type="button" variant="outline" size="sm" onClick={printRecommendations}>
+                Tisk výstupu
+              </Button>
+            </div>
           </div>
 
           {recommendationMessage && (
@@ -446,7 +468,7 @@ export function EnrichmentPanel({
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs text-zinc-500">
-                      {new Date(recommendation.activityDate).toLocaleString("cs-CZ")}
+                      {formatPragueDateTime(recommendation.activityDate)} (Europe/Prague)
                     </p>
                     <p className="line-clamp-2 text-sm text-zinc-800">{recommendation.summary}</p>
                     <p className="mt-1 text-xs text-zinc-600">
@@ -469,9 +491,9 @@ export function EnrichmentPanel({
                     )}
                   </div>
                   <div className="text-right text-xs text-zinc-600">
-                    <p>Sentiment: {recommendation.sentimentScore ?? "N/A"}/10</p>
+                    <p>Sentiment: {recommendation.sentimentScore === null ? "Nezjištěno" : `${recommendation.sentimentScore}/10`}</p>
                     <p>Urgent: {recommendation.isUrgent ? "Yes" : "No"}</p>
-                    <p>Stage: {recommendation.suggestedProjectStage ?? "N/A"}</p>
+                    <p>Stage: {recommendation.suggestedProjectStage ?? "Neurčeno"}</p>
                   </div>
                 </div>
                 {recommendation.intentCategory && (
@@ -543,9 +565,9 @@ export function EnrichmentPanel({
                             <p className="text-sm font-medium text-zinc-900 truncate">{proposal.title}</p>
                             <p className="text-xs text-zinc-500">
                               {proposal.proposedDateTimeIso
-                                ? new Date(proposal.proposedDateTimeIso).toLocaleString("cs-CZ")
+                                ? `${formatPragueDateTime(proposal.proposedDateTimeIso)} (Europe/Prague)`
                                 : proposal.allDayDateIso
-                                  ? new Date(proposal.allDayDateIso).toLocaleDateString("cs-CZ")
+                                  ? `${formatPragueDate(proposal.allDayDateIso)} (Europe/Prague)`
                                   : null}
                             </p>
                           </div>
@@ -556,7 +578,7 @@ export function EnrichmentPanel({
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
-                            onClick={() => downloadIcs(proposal)}
+                            onClick={() => downloadIcs(proposal, recommendation.activityDate)}
                           >
                             ICS
                           </Button>

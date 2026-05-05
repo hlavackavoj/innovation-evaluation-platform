@@ -157,8 +157,16 @@ type CreateAiSuggestedTaskInput = {
   dueDateIso?: string | null;
 };
 
-export async function createTaskFromAiSuggestion(input: CreateAiSuggestedTaskInput) {
-  const user = await requireCurrentUser();
+export async function createTaskFromAiSuggestionForUser(userId: string, input: CreateAiSuggestedTaskInput) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true }
+  });
+
+  if (!user) {
+    throw new Error("User not found.");
+  }
+
   const activity = await prisma.activity.findFirst({
     where: {
       id: input.activityId,
@@ -166,11 +174,11 @@ export async function createTaskFromAiSuggestion(input: CreateAiSuggestedTaskInp
         ? undefined
         : [
             {
-              userId: user.id
+              userId
             },
             {
               project: {
-                ownerUserId: user.id
+                ownerUserId: userId
               }
             }
           ]
@@ -223,6 +231,11 @@ export async function createTaskFromAiSuggestion(input: CreateAiSuggestedTaskInp
   revalidatePath(`/projects/${activity.projectId}`);
 
   return task;
+}
+
+export async function createTaskFromAiSuggestion(input: CreateAiSuggestedTaskInput) {
+  const user = await requireCurrentUser();
+  return createTaskFromAiSuggestionForUser(user.id, input);
 }
 
 export async function assignActivityToProjectAction(formData: FormData) {

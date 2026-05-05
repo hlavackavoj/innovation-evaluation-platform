@@ -11,9 +11,14 @@ export function addMinutesToIso(isoString: string, minutes: number): string {
   return d.toISOString();
 }
 
-export function buildIcsContent(title: string, startIso: string, durationMinutes = 60): string {
+export function buildIcsContent(
+  title: string,
+  startIso: string,
+  durationMinutes = 60,
+  dtstampReferenceIso?: string
+): string {
   const endIso = addMinutesToIso(startIso, durationMinutes);
-  const now = formatIcsDateTime(new Date().toISOString());
+  const now = formatIcsDateTime(dtstampReferenceIso ?? new Date().toISOString());
   const uid = `${formatIcsDateTime(startIso)}-${Math.random().toString(36).slice(2)}@iep`;
 
   return [
@@ -31,8 +36,8 @@ export function buildIcsContent(title: string, startIso: string, durationMinutes
   ].join("\r\n");
 }
 
-export function buildIcsAllDayContent(title: string, dateIso: string): string {
-  const now = formatIcsDateTime(new Date().toISOString());
+export function buildIcsAllDayContent(title: string, dateIso: string, dtstampReferenceIso?: string): string {
+  const now = formatIcsDateTime(dtstampReferenceIso ?? new Date().toISOString());
   const uid = `${formatIcsDate(dateIso)}-allday-${Math.random().toString(36).slice(2)}@iep`;
   const next = new Date(dateIso);
   next.setDate(next.getDate() + 1);
@@ -73,4 +78,34 @@ export function buildGoogleCalendarAllDayUrl(title: string, dateIso: string): st
     dates: `${date}/${formatIcsDate(next.toISOString())}`
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+export function resolveSuggestedActionDueDateIso(
+  action: { proposedDateTime?: string | null; deadline?: string | null; dueDays?: number | null },
+  referenceDateIso: string
+): string | null {
+  if (action.proposedDateTime) {
+    const proposed = new Date(action.proposedDateTime);
+    if (!Number.isNaN(proposed.getTime())) {
+      return proposed.toISOString();
+    }
+  }
+
+  if (action.deadline) {
+    const deadline = new Date(action.deadline);
+    if (!Number.isNaN(deadline.getTime())) {
+      return deadline.toISOString();
+    }
+  }
+
+  if (typeof action.dueDays === "number" && Number.isFinite(action.dueDays)) {
+    const reference = new Date(referenceDateIso);
+    if (Number.isNaN(reference.getTime())) {
+      return null;
+    }
+    reference.setDate(reference.getDate() + Math.round(action.dueDays));
+    return reference.toISOString();
+  }
+
+  return null;
 }

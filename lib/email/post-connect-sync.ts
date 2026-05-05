@@ -284,6 +284,7 @@ export async function runPostConnectInitialSync(input: {
     });
 
     const projectId = await resolveProjectIdForActivity(input.userId, projectIds, contact?.organizationId);
+    const processingReferenceIso = (persistedMessage.sentAt ?? new Date()).toISOString();
 
     if (!projectId) {
       unassigned += 1;
@@ -301,7 +302,7 @@ export async function runPostConnectInitialSync(input: {
           analysisMetadata: {
             analysisStatus: "UNASSIGNED_PROJECT",
             reason: "No contact/organization/user-owned project match.",
-            processedAt: new Date().toISOString()
+            processedAt: processingReferenceIso
           } satisfies Prisma.InputJsonValue,
           activityDate: persistedMessage.sentAt
         },
@@ -313,7 +314,7 @@ export async function runPostConnectInitialSync(input: {
           analysisMetadata: {
             analysisStatus: "UNASSIGNED_PROJECT",
             reason: "No contact/organization/user-owned project match.",
-            processedAt: new Date().toISOString()
+            processedAt: processingReferenceIso
           } satisfies Prisma.InputJsonValue,
           activityDate: persistedMessage.sentAt
         }

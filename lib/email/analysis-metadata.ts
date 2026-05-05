@@ -185,7 +185,7 @@ function parseCalendarProposals(value: unknown): CalendarProposal[] {
         title: title || "Navržená schůzka",
         proposedDateTimeIso,
         allDayDateIso,
-        timezone: typeof row.timezone === "string" ? row.timezone : "UTC"
+        timezone: typeof row.timezone === "string" ? row.timezone : "Europe/Prague"
       } satisfies CalendarProposal;
     })
     .filter((item): item is CalendarProposal => !!item);

@@ -72,6 +72,7 @@ test("parseAnalyzerOutput fixture scenarios keep explicit intentCategory mapping
   const fixturesDir = path.resolve(process.cwd(), "tests/fixtures/email-analyzer");
   const fixtureFiles = fs
     .readdirSync(fixturesDir)
+    .filter((name) => name !== "czech-regression-emails.json")
     .filter((name) => name.endsWith(".json"))
     .sort();
 
