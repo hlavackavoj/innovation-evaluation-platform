@@ -161,7 +161,8 @@ export default async function EmailAnalyzerPage({
         calendarProposals: metadata.calendarProposals,
         suggestedActions: metadata.suggestedActions,
         followUpQuestions: metadata.followUpQuestions,
-        analysisStatus: metadata.analysisStatus
+        analysisStatus: metadata.analysisStatus,
+        analysisReason: metadata.analysisReason
       };
     })
     .filter(

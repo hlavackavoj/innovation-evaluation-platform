@@ -6,7 +6,14 @@ import { CalendarDays, Check, Copy, Loader2, Pencil, Trash2 } from "lucide-react
 import { ProjectPriority } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { acceptSuggestedTaskAction, createTaskFromAiSuggestion, deleteContact, deleteOrganizationAction, deleteTask } from "@/app/email-analyzer/actions";
+import {
+  acceptSuggestedTaskAction,
+  createTaskFromAiSuggestion,
+  deleteContact,
+  deleteEmailFromAnalyzer,
+  deleteOrganizationAction,
+  deleteTask
+} from "@/app/email-analyzer/actions";
 import { useRouter } from "next/navigation";
 import type { CalendarProposal, SuggestedAction } from "@/lib/email/analysis-metadata";
 import {
@@ -81,6 +88,7 @@ type AiRecommendation = {
   suggestedActions: SuggestedAction[];
   followUpQuestions: string[];
   analysisStatus: "UNASSIGNED_PROJECT" | "PENDING" | "ANALYZED" | null;
+  analysisReason?: string | null;
 };
 
 export function EnrichmentPanel({
@@ -116,13 +124,18 @@ export function EnrichmentPanel({
   const [editDueDate, setEditDueDate] = useState("");
   const [isAccepting, startAcceptTransition] = useTransition();
   const [acceptMessage, setAcceptMessage] = useState<string | null>(null);
+  const [deletedRecommendationActivityIds, setDeletedRecommendationActivityIds] = useState<Set<string>>(new Set());
 
   const hasResults = useMemo(
     () => !!summary && (summary.importedEmails > 0 || feed.contacts.length > 0 || feed.tasks.length > 0 || feed.organizations.length > 0),
     [feed.contacts.length, feed.organizations.length, feed.tasks.length, summary]
   );
 
-  const hasAiRecommendations = aiRecommendations.length > 0;
+  const visibleRecommendations = useMemo(
+    () => aiRecommendations.filter((item) => !deletedRecommendationActivityIds.has(item.activityId)),
+    [aiRecommendations, deletedRecommendationActivityIds]
+  );
+  const hasAiRecommendations = visibleRecommendations.length > 0;
   const contactActionItems = (summary?.matchedContacts ?? 0) + (summary?.suggestedContacts ?? 0);
   const intentLabels: Record<NonNullable<AiRecommendation["intentCategory"]>, string> = {
     MEETING: "Meeting",
@@ -198,6 +211,20 @@ export function EnrichmentPanel({
         setFeed((prev) => ({ ...prev, organizations: prev.organizations.filter((item) => item.id !== id) }));
         setDeleteMessage("Organizace byla smazána.");
       }
+      router.refresh();
+    });
+  };
+
+  const onDeleteEmailRecommendation = (activityId: string) => {
+    const accepted = window.confirm(
+      "Opravdu chcete smazat tento importovaný e-mail z analyzeru? Smažou se i navržené (SUGGESTED) tasky z tohoto e-mailu."
+    );
+    if (!accepted) return;
+
+    startDeleteTransition(async () => {
+      await deleteEmailFromAnalyzer(activityId);
+      setDeletedRecommendationActivityIds((prev) => new Set(prev).add(activityId));
+      setDeleteMessage("Importovaný e-mail byl z analyzeru smazán.");
       router.refresh();
     });
   };
@@ -460,7 +487,7 @@ export function EnrichmentPanel({
           )}
 
           <div className="space-y-3">
-            {aiRecommendations.map((recommendation) => (
+            {visibleRecommendations.map((recommendation) => (
               <div
                 key={recommendation.activityId}
                 className={`rounded-lg border p-3 ${getSentimentStyle(recommendation.sentimentScore)}`}
@@ -489,11 +516,27 @@ export function EnrichmentPanel({
                         Nepřiřazeno k projektu · Vyžaduje ruční přiřazení
                       </p>
                     )}
+                    {recommendation.analysisStatus === "UNASSIGNED_PROJECT" && recommendation.analysisReason && (
+                      <p className="mt-1 text-xs text-amber-800">{recommendation.analysisReason}</p>
+                    )}
                   </div>
                   <div className="text-right text-xs text-zinc-600">
                     <p>Sentiment: {recommendation.sentimentScore === null ? "Nezjištěno" : `${recommendation.sentimentScore}/10`}</p>
                     <p>Urgent: {recommendation.isUrgent ? "Yes" : "No"}</p>
                     <p>Stage: {recommendation.suggestedProjectStage ?? "Neurčeno"}</p>
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        disabled={isDeleting}
+                        onClick={() => onDeleteEmailRecommendation(recommendation.activityId)}
+                      >
+                        <Trash2 className="mr-1 h-4 w-4" />
+                        Smazat e-mail
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 {recommendation.intentCategory && (

@@ -103,6 +103,65 @@ export async function deleteTask(taskId: string) {
   });
 }
 
+export async function deleteEmailFromAnalyzer(activityId: string) {
+  const user = await requireCurrentUser();
+  const activity = await prisma.activity.findFirst({
+    where: {
+      id: activityId,
+      type: "EMAIL",
+      OR: canAccessAllProjects(user)
+        ? undefined
+        : [
+            {
+              userId: user.id
+            },
+            {
+              project: buildAccessibleProjectWhere(user)
+            }
+          ]
+    },
+    select: {
+      id: true,
+      projectId: true,
+      emailMessageId: true
+    }
+  });
+
+  if (!activity) {
+    throw new Error("Email activity not found or access denied.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.task.deleteMany({
+      where: {
+        sourceActivityId: activity.id,
+        suggestionStatus: TaskSuggestionStatus.SUGGESTED
+      }
+    });
+
+    await tx.activity.delete({
+      where: {
+        id: activity.id
+      }
+    });
+
+    if (activity.emailMessageId) {
+      await tx.emailMessage.deleteMany({
+        where: {
+          providerMessageId: activity.emailMessageId
+        }
+      });
+    }
+  });
+
+  revalidatePath("/email-analyzer");
+  revalidatePath("/tasks");
+  revalidatePath("/");
+  if (activity.projectId) {
+    revalidatePath(`/projects/${activity.projectId}`);
+  }
+}
+
 export async function deleteOrganizationAction(organizationId: string) {
   const user = await requireCurrentUser();
   const organization = await prisma.organization.findFirst({
